@@ -7,6 +7,7 @@
  */
 #include <ctype.h>
 #include <errno.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -103,7 +104,7 @@ int main(int argc, char *argv[])
             break;
         }
         
-        if (isprint(c))
+        if (isprint(c) || isspace(c))
             printf("%c", c);
         else
             printf(".");
