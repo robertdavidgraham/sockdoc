@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
     ptrdiff_t count;
     
     if (argc != 3) {
-        fprintf(stderr, "usage: tcp-client <host> <port>\n");
+        fprintf(stderr, "[-] usage: tcp-client <host> <port>\n");
         return -1;
     }
     
@@ -41,8 +41,13 @@ int main(int argc, char *argv[])
                       0,            /* hints (defaults) */
                       &addresses);  /* results */
     if (err) {
-        fprintf(stderr, "getaddrinfo(): %s\n", gai_strerror(err));
+        fprintf(stderr, "[-] getaddrinfo(): %s\n", gai_strerror(err));
         return -1;
+    } else {
+	count = 0;
+	for (ai=addresses; ai; ai = ai->ai_next)
+	    count++;
+	fprintf(stderr, "[+] getaddrinfo(): returned %d addresses\n", (int)count);
     }
     
     /* Of the several results, keep trying to connect until
@@ -57,25 +62,25 @@ int main(int argc, char *argv[])
                           portname, sizeof(portname),
                           NI_NUMERICHOST | NI_NUMERICSERV);
         if (err) {
-            fprintf(stderr, "getnameinfo(): %s\n", gai_strerror(err));
+            fprintf(stderr, "[-] getnameinfo(): %s\n", gai_strerror(err));
             goto cleanup;
         }
         
         /* Create a socket */
         fd = socket(ai->ai_family, SOCK_STREAM, 0);
         if (fd == -1) {
-            fprintf(stderr, "socket(): %s\n", strerror(errno));
+            fprintf(stderr, "[-] socket(): %s\n", strerror(errno));
             goto cleanup;
         }
         
         /* Try to connect */
         err = connect(fd, ai->ai_addr, ai->ai_addrlen);
         if (err) {
-            fprintf(stderr, "connect(%s:%s): %s\n", addrname, portname, strerror(errno));
+            fprintf(stderr, "[-] connect(%s:%s): %s\n", addrname, portname, strerror(errno));
             close(fd);
             continue;
         } else {
-            fprintf(stderr, "connect(%s:%s): %s\n", addrname, portname, "succeeded");
+            fprintf(stderr, "[+] connect(%s:%s): %s\n", addrname, portname, "succeeded");
             break; /* got one that works, so break out of loop */
         }
     }
@@ -91,6 +96,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "send(): %s\n", strerror(errno));
         goto cleanup;
     }
+    fprintf(stderr, "[+] send(): sent %d bytes\n", (int)count);
     
     /* Now dump all the bytes in response */
     for (;;) {
@@ -114,3 +120,4 @@ cleanup:
     if (addresses)
         freeaddrinfo(addresses);
 }
+
