@@ -48,10 +48,10 @@ int main(int argc, char *argv[])
         fprintf(stderr, "[-] getaddrinfo(): %s\n", gai_strerror(err));
         return -1;
     } else {
-	count = 0;
-	for (ai=addresses; ai; ai = ai->ai_next)
-	    count++;
-	fprintf(stderr, "[+] getaddrinfo(): returned %d addresses\n", (int)count);
+	    count = 0;
+	    for (ai=addresses; ai; ai = ai->ai_next)
+	        count++;
+	    fprintf(stderr, "[+] getaddrinfo(): returned %d addresses\n", (int)count);
     }
     
     /* Of the several results, keep trying to connect until
@@ -82,6 +82,7 @@ int main(int argc, char *argv[])
         if (err) {
             fprintf(stderr, "[-] connect(%s:%s): %s\n", addrname, portname, strerror(errno));
             close(fd);
+            fd = -1;
             continue;
         } else {
             fprintf(stderr, "[+] connect(%s:%s): %s\n", addrname, portname, "succeeded");
