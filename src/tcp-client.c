@@ -7,6 +7,7 @@
  */
 #include <ctype.h>
 #include <errno.h>
+#include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,7 +15,7 @@
 #include <unistd.h>
 
 //#include <sys/types.h>
-//#include <sys/socket.h>
+#include <sys/socket.h>
 #include <netdb.h>
 
 static const char *my_http_request =
@@ -30,6 +31,9 @@ int main(int argc, char *argv[])
     int fd = -1;
     ptrdiff_t count;
     
+    /* Ignore the send() problem */
+    signal(SIGPIPE, SIG_IGN);
+
     if (argc != 3) {
         fprintf(stderr, "[-] usage: tcp-client <host> <port>\n");
         return -1;
