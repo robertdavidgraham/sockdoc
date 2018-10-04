@@ -74,8 +74,8 @@ int main(int argc, char *argv[])
     /* Of the several results, keep trying to connect until
      * we get one that works */
     for (ai=addresses; ai; ai = ai->ai_next) {
-        char addrname[NI_MAXHOST];
-        char portname[NI_MAXSERV];
+        char addrname[64];
+        char portname[8];
         
         /* Print the address/port to strings for logging/debugging  */
         err = getnameinfo(ai->ai_addr, ai->ai_addrlen,
@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
         }
     }
     if (fd == -1) {
-        fprintf(stderr, "error: no successful connection\n");
+        fprintf(stderr, "[-] error: no successful connection\n");
         //goto cleanup;
     }
 

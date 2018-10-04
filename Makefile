@@ -2,7 +2,7 @@
 CC = gcc
 CFLAGS = -Wall
 
-TCPSRV = bin/tcp-srv-one bin/tcp-srv-fork bin/tcp-srv-poll
+TCPSRV = bin/tcp-srv-one bin/tcp-srv-fork bin/tcp-srv-poll bin/tcp-srv-sigpipe
 TCPCLIENT = bin/tcp-client bin/tcp-send-fail
 
 bin/% : src/%.c

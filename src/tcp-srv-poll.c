@@ -81,7 +81,7 @@ void poller_add(struct my_poller *poller, int fd, struct sockaddr_in6 *sa, sockl
         memcpy(c->peeraddr, "err", 4);
         memcpy(c->peerport, "err", 4);
     } else {
-        fprintf(stderr, "[+] connect() from [%s]:%s)\n", c->peeraddr, c->peerport);
+        fprintf(stderr, "[+] connect() from [%s]:%s\n", c->peeraddr, c->peerport);
     }
 
     /* grow the lists by 1, if needed*/
@@ -134,7 +134,7 @@ int main(int argc, char *argv[])
     struct my_poller *poller = NULL;
     
     /* Ignore the send() problem */
-    //signal(SIGPIPE, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
 
     if (argc < 2 || 3 < argc) {
         fprintf(stderr, "[-] usage: tcp-srv-one <port> [address]\n");
