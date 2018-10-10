@@ -229,7 +229,13 @@ int main(int argc, char *argv[])
             fd = accept(poller->list[0].fd, (struct sockaddr *)&sa, &sa_addrlen);
             if (fd == -1) {
                 fprintf(stderr, "[-] accept([%s]:%s): %s\n", hostaddr, hostport, strerror(errno));
-                poller_remove_at(poller, 0);
+                switch (errno) {
+                    case EMFILE:
+                        fprintf(stderr, "[-] files=%d, use 'ulimit -n <n>' to raise\n", (int)poller->count);
+                        break;
+                }
+                //poller_remove_at(poller, 0);
+                exit(1);
             } else {
                 poller_add(poller, fd, &sa, sa_addrlen);
             }
@@ -245,6 +251,7 @@ int main(int argc, char *argv[])
                 /* other side hungup (i.e. sent FIN, closed socket) */
                 fprintf(stderr, "[+] close([%s]:%s): connection closed gracefully\n", c->peeraddr, c->peerport);
                 poller_remove_at(poller, i--);
+                exit(1);
             } else if ((poller->list[i].revents & POLLERR) != 0) {
                 /* error, probably RST sent by other side, but to be sure,
                  * get the error associated with the socket */
@@ -258,6 +265,7 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "[-] recv([%s]:%s): %s\n", c->peeraddr, c->peerport, strerror(opt));
                 }
                 poller_remove_at(poller, i--);
+                exit(1);
             } else if ((poller->list[i].revents & POLLIN) != 0) {
                 /* Data is ready to receive */
                 c->len = recv(poller->list[i].fd, c->buf, sizeof(c->buf), 0);
@@ -265,12 +273,14 @@ int main(int argc, char *argv[])
                     /* Shouldn't be possible, should've got POLLHUP instead */
                     fprintf(stderr, "[-] RECV([%s]:%s): %s\n", c->peeraddr, c->peerport, "CONNECTION CLOSED");
                     poller_remove_at(poller, i--);
+                    exit(1);
                 } else if (c->len < 0) {
                     fprintf(stderr, "[-] RECV([%s]:%s): %s\n", c->peeraddr, c->peerport, strerror(errno));
                     poller_remove_at(poller, i--);
+                    exit(1);
                 } else {
                     /* change poll() entry to transmit instead of receive */
-                    fprintf(stderr, "[+] recv([%s]:%s): received %d bytes\n", c->peeraddr, c->peerport, (int)c->len);
+                    //fprintf(stderr, "[+] recv([%s]:%s): received %d bytes\n", c->peeraddr, c->peerport, (int)c->len);
                     poller->list[i].events = POLLOUT;
                 }
             } else if ((poller->list[i].revents & POLLOUT) != 0) {
@@ -281,6 +291,7 @@ int main(int argc, char *argv[])
                     /* might've reset connection between poll() and send() */
                     fprintf(stderr, "[-] SEND([%s]:%s): %s\n", c->peeraddr, c->peerport, strerror(errno));
                     poller_remove_at(poller, i);
+                    exit(1);
                 } else if (bytes_sent < c->len) {
                     /* hit the send() incomplete issue */
                     fprintf(stderr, "[+] SEND([%s]:%s): %s\n", c->peeraddr, c->peerport, "out of buffer");
@@ -289,12 +300,13 @@ int main(int argc, char *argv[])
                     poller->list[i].events = POLLOUT;
                 } else {
                     /* all the bytes have been sent, so go back to reading */
-                    fprintf(stderr, "[+] send([%s]:%s): sent %d bytes\n", c->peeraddr, c->peerport, (int)bytes_sent);
+                    //fprintf(stderr, "[+] send([%s]:%s): sent %d bytes\n", c->peeraddr, c->peerport, (int)bytes_sent);
                     poller->list[i].events = POLLIN;
                 }
             } else {
                 fprintf(stderr, "[-] poll([%s]:%s): unknown event[%d] 0x%x\n", c->peeraddr, c->peerport, (int)i, poller->list[i].revents);
                 poller_remove_at(poller, i--);
+                exit(1);
             }
         } /* end handling connections */
     } /* end dispatch loop */

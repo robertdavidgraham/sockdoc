@@ -51,7 +51,10 @@ int main(int argc, char *argv[])
 	    count = 0;
 	    for (ai=addresses; ai; ai = ai->ai_next)
 	        count++;
-	    fprintf(stderr, "[+] getaddrinfo(): returned %d addresses\n", (int)count);
+        fprintf(stderr, "[%s] getaddrinfo(): returned %d addresses\n", 
+            count?"+":"-", (int)count);
+        if (count == 0)
+            goto cleanup;
     }
     
     /* Of the several results, keep trying to connect until
