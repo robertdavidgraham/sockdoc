@@ -5,6 +5,13 @@
 
 int main(void)
 {
+	if (*(int*)"\x01\x02\x03\x04" == 0x01020304)
+		printf("byte-order = big-endian\n");
+	else if (*(int*)"\x01\x02\x03\x04" == 0x04030201)
+		printf("byte-order = little-endian\n");
+	else
+		printf("byte-order = unknown\n");
+
 	/* This tells us if we are running on a 32-bit or 64-bit system */
 	printf("sizeof(size_t) = %u=bits\n", 8 * (unsigned)sizeof(size_t));
 
