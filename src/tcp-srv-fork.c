@@ -23,6 +23,7 @@
 
 static void child_exit(int signo)
 {
+    /* this function will be called when the child exits */
     int pid;
     int status;
 
@@ -44,8 +45,6 @@ int main(int argc, char *argv[])
     int yes = 1;
     char hostaddr[NI_MAXHOST];
     char hostport[NI_MAXSERV];
-    struct sockaddr *sa = NULL;
-    socklen_t sa_max;
         
     /* Ignore the send() problem */
     signal(SIGPIPE, SIG_IGN);
@@ -116,31 +115,25 @@ int main(int argc, char *argv[])
         goto cleanup;
     } else
         fprintf(stderr, "[+] listening on [%s]:%s\n", hostaddr, hostport);
-    
-
-    /* Allocate a structure to hold the incoming address */
-    sa_max = sizeof(struct sockaddr_in);
-    if (sa_max < sizeof(struct sockaddr_in6))
-        sa_max = sizeof(struct sockaddr_in6);
-    sa = malloc(sa_max);
 
     /* Loop accepting incoming connections */
     for (;;) {
         int fd2;
-        socklen_t sa_addrlen = sa_max;
+        struct sockaddr_storage addr;
+        socklen_t addrlen = sizeof(addr);
         char peeraddr[NI_MAXHOST];
         char peerport[NI_MAXSERV];
         int pid;
     
         /* Wait until somebody connects to us */
-        fd2 = accept(fd, sa, &sa_addrlen);
+        fd2 = accept(fd, (struct sockaddr *)&addr, &addrlen);
         if (fd2 == -1) {
             fprintf(stderr, "[-] accept([%s]:%s): %s\n", hostaddr, hostport, strerror(errno));
             continue;
         }
 
         /* Pretty print the incoming address/port */
-        err = getnameinfo(sa, sa_addrlen,
+        err = getnameinfo((struct sockaddr *)&addr, addrlen,
                         peeraddr, sizeof(peeraddr),
                         peerport, sizeof(peerport),
                         NI_NUMERICHOST | NI_NUMERICSERV);
@@ -203,8 +196,6 @@ int main(int argc, char *argv[])
 cleanup:
     if (fd > 0)
         close(fd);
-    if (sa)
-        free(sa);
     if (ai)
         freeaddrinfo(ai);
 }
