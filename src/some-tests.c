@@ -42,15 +42,20 @@ void list_interfaces(FILE *fp)
 		switch (ifa->ifa_addr->sa_family) {
 			case AF_INET: memcpy(family, "IPv4", 5); break;
 			case AF_INET6: memcpy(family, "IPv6", 5); break;
+#ifdef AF_LINK
 			case AF_LINK: memcpy(family, "link", 5); break;
+#endif
+#ifdef AF_PACKET
+			case AF_PACKET: memcpy(family, "pkt", 4); break;
+#endif
 			default: snprintf(family, sizeof(family), "%d", ifa->ifa_addr->sa_family); break;
-		}
+		} 
 
-		err = getnameinfo(ifa->ifa_addr, ifa->ifa_addr->sa_family,
+		err = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_storage),
 							addrname, sizeof(addrname),
 							0, 0,
 							NI_NUMERICHOST);
-		if (err == -1) {
+		if (err < 0) {
 			fprintf(fp, "list_interfaces: getnameinfo: %s: %s\n", ifa->ifa_name, gai_strerror(err));
 			continue;
 		}
