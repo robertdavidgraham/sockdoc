@@ -20,6 +20,7 @@ void list_interfaces(FILE *fp)
     struct ifaddrs *iflist;	/* head of the linked list */
 	struct ifaddrs *ifa;	/* iterates through the linked list */
 	int err;
+	char family[16];
 
 	/* Ask the kernel for a linked-list of network adapters */
 	err = getifaddrs(&iflist);
@@ -38,6 +39,13 @@ void list_interfaces(FILE *fp)
 			continue;
 		}
 
+		switch (ifa->ifa_addr->sa_family) {
+			case AF_INET: memcpy(family, "IPv4", 5); break;
+			case AF_INET6: memcpy(family, "IPv6", 5); break;
+			case AF_LINK: memcpy(family, "link", 5); break;
+			default: snprintf(family, sizeof(family), "%d", ifa->ifa_addr->sa_family); break;
+		}
+
 		err = getnameinfo(ifa->ifa_addr, ifa->ifa_addr->sa_family,
 							addrname, sizeof(addrname),
 							0, 0,
@@ -47,7 +55,7 @@ void list_interfaces(FILE *fp)
 			continue;
 		}
 
-		fprintf(fp, " %-16s %4d  %s\n", ifa->ifa_name, ifa->ifa_addr->sa_family, addrname);
+		fprintf(fp, " %-16s %-6s  %s\n", ifa->ifa_name, family, addrname);
 
 	}
 
