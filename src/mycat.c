@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -358,7 +359,7 @@ main_loop(int fd, int fdin, int fdout)
                 } else {
                     /* The connection has been closed, so close the socket */
                     close(fd);
-                    return 0;
+                    break;
                 }
             }
 
