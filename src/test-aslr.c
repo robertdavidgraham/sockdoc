@@ -158,7 +158,8 @@ run_tests(const char *progname, size_t loop_count)
 {
     size_t i;
     struct test_results *results = calloc(loop_count, sizeof(*results));;
-    struct test_results mask = {{0}};
+    struct test_results mask1 = {{0}};
+    struct test_results mask2 = {{0}};
     
     /* Spawn many processes and store their results */
     for (i=0; i<loop_count; i++) {
@@ -175,6 +176,14 @@ run_tests(const char *progname, size_t loop_count)
         results[i] = parse_results(&child);
     }
     
+    /* Calculate the raw bitmask of which bits are used for addresses */
+    for (i=0; i<loop_count; i++) {
+        size_t j;
+        for (j=0; j<sizeof(mask1.values)/sizeof(mask1.values[0]); j++) {
+            mask1.values[j] |= results[i].values[j];
+        }
+    }
+    
 
     /* Calculate results. We are looking for a bitmask that reflects all the
      * bits that have changed from one run to the next. This is probably
@@ -183,28 +192,27 @@ run_tests(const char *progname, size_t loop_count)
      * seconds engaging my brain and thinking about this. */
     for (i=1; i<loop_count; i++) {
         size_t j;
-        for (j=0; j<sizeof(mask.values)/sizeof(mask.values[0]); j++) {
+        for (j=0; j<sizeof(mask2.values)/sizeof(mask2.values[0]); j++) {
             unsigned long long x;
             x = results[i-1].values[j] ^ results[i].values[j];
-            mask.values[j] |= x;
+            mask2.values[j] |= x;
         }
     }
 
+
     /* Print a header indicative of how bit the addresses can get,
      * which is typically around 40 bits for 64-bit systems */
-    if (sizeof(size_t) == 8)
-        printf("%-8s   --------+++++...\n", "");
-    else
-        printf("%-8s   --------+++++...\n", "");
+    printf("%-8s all     **-----... changed **-----...\n", "");
 
     /* Print the results. For each NAMED test, we print both the MASK
      * reflecting which bits randomly changed, and also the COUNT of
      * the number of bits. */
-    for (i=0; i<sizeof(mask.values)/sizeof(mask.values[0]); i++) 
-        printf("%-8s 0x%016llx %02u-bits\n", 
+    for (i=0; i<sizeof(mask1.values)/sizeof(mask1.values[0]); i++) 
+        printf("%-8s 0x%016llx 0x%016llx %02u-bits\n", 
                 test_names[i], 
-                mask.values[i], 
-                count_bits(mask.values[i]));
+                mask1.values[i],  /* all bits */
+                mask2.values[i],  /* changed bits */
+                count_bits(mask2.values[i]));
 }
 
 /**
