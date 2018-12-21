@@ -202,7 +202,7 @@ run_tests(const char *progname, size_t loop_count)
 
     /* Print a header indicative of how bit the addresses can get,
      * which is typically around 40 bits for 64-bit systems */
-    printf("%-8s all     **-----... changed **-----...\n", "");
+    printf("%-8s all     **-----... changed **-----... %02u\n", "", (unsigned)(sizeof(void*) * 8));
 
     /* Print the results. For each NAMED test, we print both the MASK
      * reflecting which bits randomly changed, and also the COUNT of
