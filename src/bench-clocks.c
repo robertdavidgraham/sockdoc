@@ -283,8 +283,8 @@ void measure_clock(const char * ctype, clockid_t clock)
 
 
   clock_getres(clock, &t);
-  printf("%-32s ", ctype);
-  printf("%6ld-ns res, ", t.tv_sec * 1000000000 + t.tv_nsec);
+  printf("%-30s", ctype);
+  printf("%9ld-ns res, ", t.tv_sec * 1000000000 + t.tv_nsec);
 
   clock_overhead(clock);
 }
@@ -300,29 +300,41 @@ int main(void)
   ftime_overhead();
   gettimeofday_overhead();
   eval_clock(CLOCK_REALTIME);
+
 #ifdef CLOCK_REALTIME_COARSE
   eval_clock(CLOCK_REALTIME_COARSE);
 #endif
+
   eval_clock(CLOCK_MONOTONIC);
+
 #ifdef CLOCK_MONOTONIC_COARSE
   eval_clock(CLOCK_MONOTONIC_COARSE);
 #endif
+
+#ifdef CLOCK_MONOTONIC_RAW
   eval_clock(CLOCK_MONOTONIC_RAW);
+#endif
+
 #ifdef CLOCK_MONOTONIC_RAW_APPROX
   eval_clock(CLOCK_MONOTONIC_RAW_APPROX);
 #endif
+
 #ifdef CLOCK_BOOTTIME
   eval_clock(CLOCK_BOOTTIME);
 #endif
+
 #ifdef CLOCK_UPTIME
   eval_clock(CLOCK_UPTIME);
 #endif
+
 #ifdef CLOCK_UPTIME_RAW
   eval_clock(CLOCK_UPTIME_RAW);
 #endif
+
 #ifdef CLOCK_UPTIME_RAW_APPROX
   eval_clock(CLOCK_UPTIME_RAW_APPROX);
 #endif
+
   eval_clock(CLOCK_PROCESS_CPUTIME_ID);
   eval_clock(CLOCK_THREAD_CPUTIME_ID);
 
