@@ -138,16 +138,9 @@ int main(int argc, char *argv[])
 #elif defined(O_NONBLOCK) && defined(F_SETFL)
     {
         int flag;
-
         flag = fcntl(fd, F_GETFL, 0);
-        if (flag == -1) {
-            fprintf(stderr, "[-] fcntl(F_GETFL): %s\n", sterror(errno));
-        }
         flag |= O_NONBLOCK;
         err = fcntl(socketfd, F_SETFL,  flag);
-        if (flag == -1) {
-            fprintf(stderr, "[-] fcntl(O_NONBLOCK): %s\n", sterror(errno));
-        }
     }
 #else
     fprintf(stderr, "[-] non-blocking not set\n");

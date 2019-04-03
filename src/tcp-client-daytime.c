@@ -1,8 +1,9 @@
 /* tcp-client-daytime
  Simple client for the 'daytime' protocol.
  Example usage:
-    tcp-client-daytime scanme.robertgraham.com
- This will connect and read a line of text
+    tcp-client-daytime time-a-b.nist.gov
+ This will connect and read a line of text which is probably a date.
+ Reference: RFC 867
  */
 #include <ctype.h>
 #include <errno.h>

@@ -13,8 +13,6 @@
 #include <string.h>
 
 #include <unistd.h>
-
-//#include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 
@@ -81,6 +79,7 @@ int main(int argc, char *argv[])
         }
         
         /* Try to connect */
+        fprintf(stderr, "[ ] connecting to [%s]:%s\n", addrname, portname);
         err = connect(fd, ai->ai_addr, ai->ai_addrlen);
         if (err) {
             fprintf(stderr, "[-] connect([%s]:%s): %s\n", addrname, portname, strerror(errno));
@@ -100,8 +99,8 @@ int main(int argc, char *argv[])
     /* The 'fd' socket now has a valid connection to the server, so
      * send the HTTP request */
     count = send(fd, my_http_request, strlen(my_http_request), 0);
-    if (count < strlen(my_http_request)) {
-        fprintf(stderr, "send(): %s\n", strerror(errno));
+    if (count == -1) {
+        fprintf(stderr, "[-] send(): %s\n", strerror(errno));
         goto cleanup;
     }
     fprintf(stderr, "[+] send(): sent %d bytes\n", (int)count);

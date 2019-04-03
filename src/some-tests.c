@@ -4,67 +4,97 @@
 #include <string.h> /* strerror() */
 #include <time.h>
 
+#include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <net/if.h> 	/* SIOCGIFCONF */
-#include <netdb.h>		/* getnameinfo() */
-#include <ifaddrs.h> 	/* getifaddrs() struct ifaddrs */
+#include <netdb.h>
+#include <fcntl.h> /* fcntl(), F_GETFL, O_NONBLOCK */
 
+int sock_debug = 1;
 
 /**
- * List the interfaces on the local machine and IP addresses
+ * Configures the socket for non-blocking status
  */
-void list_interfaces(FILE *fp)
+int sock_set_nonblocking(int fd)
 {
-    struct ifaddrs *iflist;	/* head of the linked list */
-	struct ifaddrs *ifa;	/* iterates through the linked list */
+	int flag;
+	flag = fcntl(fd, F_GETFL, 0);
+	flag |= O_NONBLOCK;
+	flag = fcntl(fd, F_SETFL,  flag);
+	if (flag == -1)
+		return -1;
+	else
+		return 0;
+}
+
+/**
+ * Tests if a socket is set in non-blocking mode
+ */
+int sock_is_nonblocking(int fd)
+{
+	return (fcntl(fd, F_GETFL, 0) & O_NONBLOCK) == O_NONBLOCK;
+}
+
+/**
+ * This tests whether sockets create by 'accept()' will inherit the 
+ * non-blocking status of the listening socket. This creates a server
+ * socket set to non-blocking, then creates a client socket to connect
+ * to the server, then tests the blocking status of that third socket.
+ */
+int accept_inherits_nonblocking(void)
+{
 	int err;
-	char family[16];
+	int fd = -1;
+	int fd_out = -1;
+	int fd_in = -1;
+	struct addrinfo *ai;
+	struct addrinfo hints = {0};
+	struct sockaddr_storage sa = {0};
+	socklen_t sa_len = sizeof(sa);
 
-	/* Ask the kernel for a linked-list of network adapters */
-	err = getifaddrs(&iflist);
-    if (err == -1) {
-		fprintf(fp, "list_interfaces: getifaddrs: %s\n", strerror(errno));
-		return;
-    }
+	/* Create a passive/half-open socket for listening */
+    hints.ai_flags = AI_PASSIVE;
+	err = getaddrinfo(0, "55555", &hints, &ai);
+	if (err) {
+		fprintf(stderr, "inherit:getaddrinfo(): %s\n", gai_strerror(err));
+		goto cleanup;;
+	}
+    fd = socket(ai->ai_family, SOCK_STREAM, 0);
+	sock_set_nonblocking(fd);
+    err = bind(fd, ai->ai_addr, ai->ai_addrlen);
+    err = listen(fd, 10);
+	err = getsockname(fd, (struct sockaddr *)&sa, &sa_len);
 
-	/* Enumerate the returned list */
-    for (ifa = iflist; ifa != NULL; ifa = ifa->ifa_next) {
-    	char addrname[256];
-
-		/* If there is no address associated with the adapter, still print it */
-		if (ifa->ifa_addr == NULL) {
-			fprintf(fp, "%-16s --empty--\n", ifa->ifa_name);
-			continue;
-		}
-
-		switch (ifa->ifa_addr->sa_family) {
-			case AF_INET: memcpy(family, "IPv4", 5); break;
-			case AF_INET6: memcpy(family, "IPv6", 5); break;
-#ifdef AF_LINK
-			case AF_LINK: memcpy(family, "link", 5); break;
-#endif
-#ifdef AF_PACKET
-			case AF_PACKET: memcpy(family, "pkt", 4); break;
-#endif
-			default: snprintf(family, sizeof(family), "%d", ifa->ifa_addr->sa_family); break;
-		} 
-
-		err = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_storage),
-							addrname, sizeof(addrname),
-							0, 0,
-							NI_NUMERICHOST);
-		if (err < 0) {
-			fprintf(fp, "list_interfaces: getnameinfo: %s: %s\n", ifa->ifa_name, gai_strerror(err));
-			continue;
-		}
-
-		fprintf(fp, " %-16s %-6s  %s\n", ifa->ifa_name, family, addrname);
-
+	/* Create a client socket for the outgoing connection to this server */
+	fd_out = socket(sa.ss_family, SOCK_STREAM, 0);
+	err = connect(fd_out, (struct sockaddr *)&sa, sa_len);
+	if (err != 0) {
+		fprintf(stderr, "inherit:connect(): %s\n", strerror(errno));
+		return -1;
 	}
 
-    freeifaddrs(iflist);
+	/* Accept the incoming client connection */
+again:
+	fd_in = accept(fd, 0, 0);
+	if (fd_in == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
+		goto again;
+	if (fd_in == -1) {
+		fprintf(stderr, "inherit:accept(): %s\n", strerror(errno));
+		return -1;
+	}
+
+	fprintf(stderr, "inherit blocking = %s\n", sock_is_nonblocking(fd_in)?"yes":"no");
+
+cleanup:
+	if (fd != -1)
+		close(fd);
+	if (fd_out != -1)
+		close(fd_out);
+	if (fd_in != -1)
+		close(fd_in);
+
+	return 0;
 }
 
 int main(void)
@@ -109,9 +139,10 @@ int main(void)
 		printf("timestamp = %s\n", buffer);
 	}
 	
-	/* List the network interfaces */
-	printf("--- network interfaces ----\n");
-	list_interfaces(stdout);
+	accept_inherits_nonblocking();
+
 	return 0;
 }
+
+
 

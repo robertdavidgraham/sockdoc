@@ -16,24 +16,20 @@
 #include <string.h>
 
 #include <unistd.h>
-
-//#include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>
+#include <sys/socket.h>
+#include <sys/wait.h> /* waitpid() */
 
+/* this function will be called when the child exits */
 static void child_exit(int signo)
 {
-    /* this function will be called when the child exits */
-    int pid;
-    int status;
-
     for (;;) {
-        pid = waitpid(-1, &status, WNOHANG);
+        int status;
+        int pid = waitpid(-1, &status, WNOHANG);
         if (pid == -1)
             break;
         fprintf(stderr, "[+] child process pid=%d exited\n", pid);
     };
-    signal(SIGCHLD,child_exit);
 }
 
 int main(int argc, char *argv[])
