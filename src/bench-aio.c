@@ -11,7 +11,7 @@
     In particular, this is meant as a demonstration on how to program
     using the AIO APIs.
 */
-#define _FILE_OFFSET_BITS = 64
+#define _FILE_OFFSET_BITS 64
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
@@ -24,6 +24,7 @@
 #include <fcntl.h> /* open() */
 #include <unistd.h> /* write() */
 
+int debug = 0;
 
 /**
  * This structure contains all the configuration settings for
@@ -167,6 +168,14 @@ cfg_parse_command_line(struct config *cfg, int argc, char *argv[])
             }
         } else if (argv[i][0] == '-') {
             switch (argv[i][1]) {
+                case 'd':
+                {
+                    unsigned j;
+                    for (j=1; argv[i][j] == 'd'; j++)
+                        debug++;
+                    fprintf(stderr, "[+] debug %d\n", (int)debug);
+                    break;
+                }
                 case 'f':
                 {
                     const char *value = argv[i]+2;
@@ -208,6 +217,10 @@ mycb_read(struct aiocb *a, struct mycontrolblock *mycb, off_t filesize, int fd, 
     a->aio_fildes = fd; 
     a->aio_nbytes = read_length;
     a->aio_offset = offset;
+
+#if defined(AIO_RAW) /*__linux__*/
+    a->aio_flags = AIO_RAW;
+#endif
 
 
     /* Execute the read. This starts the read process, but doesn't finish
@@ -264,7 +277,24 @@ util_file_disable_caching(int fd)
     flags |= O_NOATIME; /* disable updating 'atime' (access time) attribute on the file */
     
     err = fcntl(fd, F_SETFL, flags);
-    if (err {
+    if (err) {
+        fprintf(stderr, "[-] fcntl(O_DIRECT | O_NOATIME): %d: %s\n", errno, strerror(errno));
+        return -1;
+    }
+    return 0;
+#elif defined(__O_DIRECT)
+    int err;
+    int flags;
+    flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) {
+        fprintf(stderr, "[-] fcntl(F_FETFL): %d: %s\n", errno, strerror(errno));
+        return -1;
+    }
+    //flags |= __O_DIRECT;  /* direct access without buffering */
+    flags |= __O_NOATIME; /* disable updating 'atime' (access time) attribute on the file */
+    
+    err = fcntl(fd, F_SETFL, flags);
+    if (err) {
         fprintf(stderr, "[-] fcntl(O_DIRECT | O_NOATIME): %d: %s\n", errno, strerror(errno));
         return -1;
     }
@@ -289,7 +319,10 @@ my_random_reads(int fd, struct config *cfg, struct timings *t)
     struct stat st;
 
     /* Disable caching */
+    if (debug > 2)
+        fprintf(stderr, "[ ] disabling file caching\n");
     util_file_disable_caching(fd);
+    
 
     /* Alloc both a lit of AIO structures, plus a matching
      * list of our own structures */
@@ -299,7 +332,7 @@ my_random_reads(int fd, struct config *cfg, struct timings *t)
     /* Discover the size of the file */
     err = fstat(fd, &st);
     if (err) {
-        perror(cfg->filename);
+        fprintf(stderr, "[-] fstat(): %d: %s\n", errno, strerror(errno));;
         return -1;
     }
     if (st.st_size != cfg->filesize) {
@@ -363,6 +396,7 @@ my_random_reads(int fd, struct config *cfg, struct timings *t)
             if (err != 0) {
                 fprintf(stderr, "[-] asynchronous error: %s\n", strerror(err));
                                                                 /*       ^^^ */
+                exit(1);
                 break;
             }
 
@@ -421,7 +455,7 @@ my_create_testfile(const char *filename, off_t filesize)
     }
 
     /* Disable caching */
-    util_file_disable_caching(fd);
+    //util_file_disable_caching(fd);
 
     /* Get the size of the existing file */
     int err;
@@ -433,7 +467,7 @@ my_create_testfile(const char *filename, off_t filesize)
     }
     if (st.st_size >= filesize) {
         /* File is big enough, so just return without filling it */
-        fprintf(stderr, "[+] file is big enough (%llu bytes)\n", st.st_size);
+        fprintf(stderr, "[+] file is big enough (%llu bytes)\n", (long long)st.st_size);
         return fd;
     }
 
@@ -442,6 +476,8 @@ my_create_testfile(const char *filename, off_t filesize)
      * the lowest 8 bits of the offset for that bytes */
     enum {BUF_SIZE = 4 * 1024 * 1024};
     char *buf = malloc(BUF_SIZE);
+    if (buf == NULL)
+        abort();
     for (i=0; i<BUF_SIZE; i++)
         buf[i] = (unsigned char)i;
     
@@ -451,7 +487,7 @@ my_create_testfile(const char *filename, off_t filesize)
         ssize_t count;
         count = write(fd, buf, BUF_SIZE);
         if (count < 0) {
-            perror(filename);
+            fprintf(stderr, "[-] write(%d): %d: %s\n", fd, errno, strerror(errno));
             exit(1);
         }
         total_written += count;
@@ -461,7 +497,7 @@ my_create_testfile(const char *filename, off_t filesize)
      * be fraction of our buffer size */
     ssize_t count = write(fd, buf, filesize - total_written);
     if (count < 0) {
-        perror(filename);
+        fprintf(stderr, "[-] write(): %d: %s\n", errno, strerror(errno));
         exit(1);
     }
 
@@ -518,6 +554,7 @@ simple_test(void)
     }
  
     /* Wait for results */ 
+    size_t total_done = 0;
     for (;;) {
         struct timespec ts = {0, 1000ULL};
         err = aio_suspend((const struct aiocb *const *)aio_list, QUEUE_DEPTH, &ts);
@@ -528,16 +565,28 @@ simple_test(void)
             perror("aio_suspend");
             return errno; 
         } else if (err == 0) {
-            break;
+            /* Check for errors */
+            size_t j;
+            for (j=0; j<QUEUE_DEPTH; j++) {
+                if (aio_list[j] == NULL)
+                    continue;
+                err = aio_error(aio_list[j]);
+                if (err == 0) {
+                    total_done++;
+                    aio_list[j] = NULL;
+                    continue;
+                }
+                if (err == EAGAIN || err == EINTR)
+                    continue;
+                if (err == EINPROGRESS)
+                    continue;
+                fprintf(stderr, "[-] aio_error(): %d: %s\n", err, strerror(err));
+            }
         }
-    }
 
-    /* Check for errors */
-    for (i=0; i<QUEUE_DEPTH; i++) {
-        err = aio_error(aio_list[i]);
-        if (err == 0)
-            continue;
-        fprintf(stderr, "[+] aio_error=%d\n", err);
+        fprintf(stderr, "[+] total = %d\n", (int)total_done);
+        if (total_done >= QUEUE_DEPTH)
+            break;
     }
 
     close(fd);
