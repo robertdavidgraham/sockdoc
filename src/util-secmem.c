@@ -101,7 +101,7 @@ void *util_secmem_alloc(size_t size) {
      * don't care if it's not available to the operating system, or
      * if the call fails for some reason. */
 #ifdef MADV_DONTDUMP
-  madvise(p + page_size, full_size - 2 * page_szie, MADV_DONTDUMP);
+  madvise(p + page_size, full_size - 2 * page_size, MADV_DONTDUMP);
 #endif
 
   /* Finally, we need to create the resulting "pointer", which
