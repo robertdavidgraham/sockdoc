@@ -1,0 +1,477 @@
+/*
+ "Crypto implementing the ChaCha20 encryption algorithm"
+
+ Copyright: 2019 by Robert David Graham
+ Authors: DJB, Robert David Graham
+ License: MIT
+       https://github.com/robertdavidgraham/sockdoc/blob/master/src/LICENSE
+ Dependencies: none
+*/
+#include "util-chacha20.h"
+#include <errno.h>
+#include <string.h>
+
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
+/**
+ * Rotate left a 32-bit number by 'count' bits
+ */
+#define ROTL32(number, count) \
+    (((number) << (count)) | ((number) >> (32 - (count))))
+
+/**
+ * Parse a 32-bit integer in little-endian format.
+ */
+#define READ32LE(p)                                   \
+    ((((uint32_t)(p)[0])) | (((uint32_t)(p)[1]) << 8) \
+        | (((uint32_t)(p)[2]) << 16) | (((uint32_t)(p)[3]) << 24))
+
+/**
+ * This applies a partial mixing of the input block pointed
+ * to by 'x'. The 'addition' and 'xor' changes the bits,
+ * whereas the 'rotate' shuffles them around in the block.
+ */
+#define QUARTERROUND(x, a, b, c, d) \
+    x[a] += x[b];                   \
+    x[d] = ROTL32(x[d] ^ x[a], 16); \
+    x[c] += x[d];                   \
+    x[b] = ROTL32(x[b] ^ x[c], 12); \
+    x[a] += x[b];                   \
+    x[d] = ROTL32(x[d] ^ x[a], 8);  \
+    x[c] += x[d];                   \
+    x[b] = ROTL32(x[b] ^ x[c], 7)
+
+/**
+ * This is the internal block-cipher function. It transforms the current
+ * block/state into a keystream, which will then be XORed with the data
+ * in stream-cipher fashion.
+ */
+static void
+chacha20_cryptomagic(unsigned char keystream[64], const uint32_t state[16])
+{
+    uint32_t x[16];
+    size_t i;
+
+    /* We work from a copy of the state, rather than the state itself,
+     * and throw away the work at the end of the function. The next
+     * time we call this function, the only change in the state will
+     * bin in state[12] and state[13], which represent the "counter",
+     * which will be incremented by 1. */
+    memcpy(x, state, sizeof(x[0]) * 16);
+
+    /*
+     * This is where the crypto-magic happens within ChaCha20. We apply
+     * successive rounds of mixing/transformation on the block of
+     * data, shuffling the bits around until they appear completely
+     * random. Each 'quarterround' (really, an 'eighthround') applies
+     * an 'addition', 'rotate', and 'xor' to part of the block. This
+     * changes the bits, and then shuffles them around in the block.
+     * Even though subsequent calls to this 'rounds()' function may
+     * have only one bit different (the 'counter' that increments),
+     * all the output bits will be completely transformed from the
+     * previous call (which is to say, 50% will be different, because
+     * by pure random chance, completely new bits will be the same
+     * 50% of the time and opposite the other 50% of the time).
+     * This applies 20 rounds, concisting of "10 column rounds" and
+     * "10 diaganol rounds". It is this number where ChaCha20 gets
+     * the number 20, as other variants are defined for fewer
+     * rounds (e.g. ChaCha8 has 8 rounds).
+     */
+    for (i = 0; i < 10; i++) {
+        QUARTERROUND(x, 0, 4, 8, 12);
+        QUARTERROUND(x, 1, 5, 9, 13);
+        QUARTERROUND(x, 2, 6, 10, 14);
+        QUARTERROUND(x, 3, 7, 11, 15);
+        QUARTERROUND(x, 0, 5, 10, 15);
+        QUARTERROUND(x, 1, 6, 11, 12);
+        QUARTERROUND(x, 2, 7, 8, 13);
+        QUARTERROUND(x, 3, 4, 9, 14);
+    }
+    for (i = 0; i < 16; i++)
+        x[i] += state[i];
+
+    /* The output writes out the 32-bit integers in little-endian
+     * format into bytes. */
+    for (i = 0; i < 16; i++) {
+        keystream[i * 4 + 0] = (unsigned char)(x[i] >> 0);
+        keystream[i * 4 + 1] = (unsigned char)(x[i] >> 8);
+        keystream[i * 4 + 2] = (unsigned char)(x[i] >> 16);
+        keystream[i * 4 + 3] = (unsigned char)(x[i] >> 24);
+    }
+}
+
+/*
+ * This initializes the internal context, which for ChaCha20 is much simpler
+ * than other crypto algorithms. This simply copies over some static
+ * 'constants', then the 'key', then a 'counter', then the 'nonce'. As we
+ * encrypt/decrypt a stream, only the 'counter' (integers 12 and 13) will
+ * change. In other words, ChaCha20 is technically a stream-cipher, but is
+ * implemented as a block-cipher in counter-mode.
+ */
+int
+util_chacha20_init(util_chacha20_t *ctx, const unsigned char key[32],
+    size_t key_length, const unsigned char nonce[8], size_t nonce_length)
+{
+    /* Here we double-check the length of the incoming buffers. */
+    if (key_length != 32 || nonce_length != 8) {
+        ctx->partial = 64;
+        return EINVAL;
+    }
+
+    /* The constants are the string "expand 32-byte k"  */
+    ctx->state[0] = 0x61707865;
+    ctx->state[1] = 0x3320646e;
+    ctx->state[2] = 0x79622d32;
+    ctx->state[3] = 0x6b206574;
+    ctx->state[4] = READ32LE(key + 0);
+    ctx->state[5] = READ32LE(key + 4);
+    ctx->state[6] = READ32LE(key + 8);
+    ctx->state[7] = READ32LE(key + 12);
+    ctx->state[8] = READ32LE(key + 16);
+    ctx->state[9] = READ32LE(key + 20);
+    ctx->state[10] = READ32LE(key + 24);
+    ctx->state[11] = READ32LE(key + 28);
+    ctx->state[12] = 0;
+    ctx->state[13] = 0;
+    ctx->state[14] = READ32LE(nonce + 0);
+    ctx->state[15] = READ32LE(nonce + 4);
+
+    ctx->partial = 0;
+
+    return 0;
+}
+
+/*
+ * Encryption happens in typical stream-cipher fashion. We first
+ * grab the next few bytes of the keystream, then XOR those bytes
+ * with the plaintext to get the ciphertext.
+ *
+ * After this function is called, the change to the context/state
+ * is updating the block 'counter', which is integers 12 and 13 of the
+ * state. If the input isn't evenly divisible by 64, then the variable
+ * 'partial' will indicate the number of bytes currently encrypted
+ * within the current block so that the next call to this function
+ * will continue from this point forward.
+ *
+ * Note that other implementations of ChaCha20 store the keystream
+ * between subsequent calls to encrypt partial blocks of input. In
+ * other words, for each value of 'counter', they only generate
+ * the keystream once, and store it for later use with partial
+ * blocks.
+ *
+ * This implementation doesn't, but simply stores the count of the number
+ * of partial bytes. That means if this function is called to encrypt
+ * data 1 byte at a time, then we'll have to repeatedly geenrate the
+ * keystream for each and every byte, which will be very slow.
+ * You therefore can't use this specific implementation as part of
+ * a random number generator, because calling this a byte at a time
+ * is very slow.
+ *
+ * On the other hand, it allows us to call this function in a stateless
+ * manner, such as seeking to random locations in an encrypted file
+ * in the `util_chacha20_crypt()` function.
+ */
+void
+util_chacha20_encrypt(util_chacha20_t *ctx, const void *plaintext,
+    void *ciphertext, size_t length)
+{
+    unsigned char keystream[64];
+    size_t i; /* index between [0..length) of the plaintext/ciphertext */
+
+    /* If there is some bug where we failed to initialize this structure,
+     * then exit after discarding the data. */
+    if (ctx->partial >= 64) {
+        memset(ciphertext, 0, length);
+        return;
+    }
+
+    /* Convert a 64-byte block at a time. The variable 'i' will be
+     * incremented by 64 each iteration of this loop, except for the
+     * first and last blocks, which may be partial. */
+    for (i = 0; i < length;) {
+        size_t j; /* index beteen [0..64) within the current block */
+        size_t jlen; /* max length of current block*/
+
+        /* Grab the keystream for the current block */
+        chacha20_cryptomagic(keystream, ctx->state);
+
+        /* Encrypt/decrypt the bytes by XORing the keystream with the
+         * plaintext/ciphertext, in standard stream-cipher technique */
+        jlen = MIN(64, ctx->partial + length - i);
+        for (j = ctx->partial; j < jlen; j++) {
+            ((unsigned char *)ciphertext)[i]
+                = ((unsigned char *)plaintext)[i] ^ keystream[j];
+            i++;
+        }
+        ctx->partial = 0;
+
+        /* If last block we are processing is only partially complete,
+         * then mark the number of bytes we've processed and exit.
+         * We'll start at this offset next time this function is called */
+        if (j != 64) {
+            ctx->partial = j;
+            break;
+        }
+
+        /* Increment the block counter in order to move to the next block */
+        ctx->state[12]++;
+        ctx->state[13] += (ctx->state[12] == 0);
+    }
+}
+
+/* ChaCha20 is a stream-cipher, where encryption and decryption
+ * are the same thing, XORing against a keystream. Therefore,
+ * to decrypt, we simply encrypt. */
+void
+util_chacha20_decrypt(util_chacha20_t *ctx, const void *ciphertext,
+    void *plaintext, size_t length)
+{
+    util_chacha20_encrypt(ctx, ciphertext, plaintext, length);
+}
+
+/*
+ * This is the stateless version of the encrypt()/decrypt() functions,
+ * intended for random access of encrypted files, where 'offset' is
+ * the random byte location within a file. We need to transform
+ * the 'offset' into a block 'counter' and 'partial' offset within
+ * the block. In other words, the upper 58 bits are the block counter
+ * and the lower 6 bits are the partial offset within the block.
+ *
+ * Note that this function can only be used with things that are
+ * 2^64 bytes in size, which is smaller than the normal use of this
+ * function for data that's 2^70 bytes in
+ */
+void
+util_chacha20_crypt(const unsigned char key[32], const unsigned char nonce[8],
+    uint64_t offset, size_t length, const void *input, void *output)
+{
+    util_chacha20_t ctx[1];
+    uint64_t counter = offset >> 6;
+
+    util_chacha20_init(ctx, key, 32, nonce, 8);
+    ctx->state[12] = (uint32_t)counter;
+    ctx->state[13] = (uint32_t)(counter >> 32ULL);
+    ctx->partial = offset & 0x3F;
+    util_chacha20_encrypt(ctx, input, output, length);
+}
+
+/*
+ * This is a simple utility function, so that the programmer can
+ * use a uint64_t as a nonce instead of an array of bytes.
+ */
+void
+util_chacha20_nonce2bytes(uint64_t number, unsigned char bytes[8])
+{
+    bytes[0] = (unsigned char)(number >> 0ULL);
+    bytes[1] = (unsigned char)(number >> 8ULL);
+    bytes[2] = (unsigned char)(number >> 16ULL);
+    bytes[3] = (unsigned char)(number >> 24ULL);
+    bytes[4] = (unsigned char)(number >> 32ULL);
+    bytes[5] = (unsigned char)(number >> 40ULL);
+    bytes[6] = (unsigned char)(number >> 48ULL);
+    bytes[7] = (unsigned char)(number >> 56ULL);
+}
+
+/*
+ * Compile using this define in order to test this module by itself
+ */
+#ifdef CHACHA20STANDALONE
+#include <stdio.h>
+
+static const unsigned char expected1[512] = { 0x76, 0xb8, 0xe0, 0xad, 0xa0,
+    0xf1, 0x3d, 0x90, 0x40, 0x5d, 0x6a, 0xe5, 0x53, 0x86, 0xbd, 0x28, 0xbd,
+    0xd2, 0x19, 0xb8, 0xa0, 0x8d, 0xed, 0x1a, 0xa8, 0x36, 0xef, 0xcc, 0x8b,
+    0x77, 0x0d, 0xc7, 0xda, 0x41, 0x59, 0x7c, 0x51, 0x57, 0x48, 0x8d, 0x77,
+    0x24, 0xe0, 0x3f, 0xb8, 0xd8, 0x4a, 0x37, 0x6a, 0x43, 0xb8, 0xf4, 0x15,
+    0x18, 0xa1, 0x1c, 0xc3, 0x87, 0xb6, 0x69, 0xb2, 0xee, 0x65, 0x86, 0x9f,
+    0x07, 0xe7, 0xbe, 0x55, 0x51, 0x38, 0x7a, 0x98, 0xba, 0x97, 0x7c, 0x73,
+    0x2d, 0x08, 0x0d, 0xcb, 0x0f, 0x29, 0xa0, 0x48, 0xe3, 0x65, 0x69, 0x12,
+    0xc6, 0x53, 0x3e, 0x32, 0xee, 0x7a, 0xed, 0x29, 0xb7, 0x21, 0x76, 0x9c,
+    0xe6, 0x4e, 0x43, 0xd5, 0x71, 0x33, 0xb0, 0x74, 0xd8, 0x39, 0xd5, 0x31,
+    0xed, 0x1f, 0x28, 0x51, 0x0a, 0xfb, 0x45, 0xac, 0xe1, 0x0a, 0x1f, 0x4b,
+    0x79, 0x4d, 0x6f, 0x2d, 0x09, 0xa0, 0xe6, 0x63, 0x26, 0x6c, 0xe1, 0xae,
+    0x7e, 0xd1, 0x08, 0x19, 0x68, 0xa0, 0x75, 0x8e, 0x71, 0x8e, 0x99, 0x7b,
+    0xd3, 0x62, 0xc6, 0xb0, 0xc3, 0x46, 0x34, 0xa9, 0xa0, 0xb3, 0x5d, 0x01,
+    0x27, 0x37, 0x68, 0x1f, 0x7b, 0x5d, 0x0f, 0x28, 0x1e, 0x3a, 0xfd, 0xe4,
+    0x58, 0xbc, 0x1e, 0x73, 0xd2, 0xd3, 0x13, 0xc9, 0xcf, 0x94, 0xc0, 0x5f,
+    0xf3, 0x71, 0x62, 0x40, 0xa2, 0x48, 0xf2, 0x13, 0x20, 0xa0, 0x58, 0xd7,
+    0xb3, 0x56, 0x6b, 0xd5, 0x20, 0xda, 0xaa, 0x3e, 0xd2, 0xbf, 0x0a, 0xc5,
+    0xb8, 0xb1, 0x20, 0xfb, 0x85, 0x27, 0x73, 0xc3, 0x63, 0x97, 0x34, 0xb4,
+    0x5c, 0x91, 0xa4, 0x2d, 0xd4, 0xcb, 0x83, 0xf8, 0x84, 0x0d, 0x2e, 0xed,
+    0xb1, 0x58, 0x13, 0x10, 0x62, 0xac, 0x3f, 0x1f, 0x2c, 0xf8, 0xff, 0x6d,
+    0xcd, 0x18, 0x56, 0xe8, 0x6a, 0x1e, 0x6c, 0x31, 0x67, 0x16, 0x7e, 0xe5,
+    0xa6, 0x88, 0x74, 0x2b, 0x47, 0xc5, 0xad, 0xfb, 0x59, 0xd4, 0xdf, 0x76,
+    0xfd, 0x1d, 0xb1, 0xe5, 0x1e, 0xe0, 0x3b, 0x1c, 0xa9, 0xf8, 0x2a, 0xca,
+    0x17, 0x3e, 0xdb, 0x8b, 0x72, 0x93, 0x47, 0x4e, 0xbe, 0x98, 0x0f, 0x90,
+    0x4d, 0x10, 0xc9, 0x16, 0x44, 0x2b, 0x47, 0x83, 0xa0, 0xe9, 0x84, 0x86,
+    0x0c, 0xb6, 0xc9, 0x57, 0xb3, 0x9c, 0x38, 0xed, 0x8f, 0x51, 0xcf, 0xfa,
+    0xa6, 0x8a, 0x4d, 0xe0, 0x10, 0x25, 0xa3, 0x9c, 0x50, 0x45, 0x46, 0xb9,
+    0xdc, 0x14, 0x06, 0xa7, 0xeb, 0x28, 0x15, 0x1e, 0x51, 0x50, 0xd7, 0xb2,
+    0x04, 0xba, 0xa7, 0x19, 0xd4, 0xf0, 0x91, 0x02, 0x12, 0x17, 0xdb, 0x5c,
+    0xf1, 0xb5, 0xc8, 0x4c, 0x4f, 0xa7, 0x1a, 0x87, 0x96, 0x10, 0xa1, 0xa6,
+    0x95, 0xac, 0x52, 0x7c, 0x5b, 0x56, 0x77, 0x4a, 0x6b, 0x8a, 0x21, 0xaa,
+    0xe8, 0x86, 0x85, 0x86, 0x8e, 0x09, 0x4c, 0xf2, 0x9e, 0xf4, 0x09, 0x0a,
+    0xf7, 0xa9, 0x0c, 0xc0, 0x7e, 0x88, 0x17, 0xaa, 0x52, 0x87, 0x63, 0x79,
+    0x7d, 0x3c, 0x33, 0x2b, 0x67, 0xca, 0x4b, 0xc1, 0x10, 0x64, 0x2c, 0x21,
+    0x51, 0xec, 0x47, 0xee, 0x84, 0xcb, 0x8c, 0x42, 0xd8, 0x5f, 0x10, 0xe2,
+    0xa8, 0xcb, 0x18, 0xc3, 0xb7, 0x33, 0x5f, 0x26, 0xe8, 0xc3, 0x9a, 0x12,
+    0xb1, 0xbc, 0xc1, 0x70, 0x71, 0x77, 0xb7, 0x61, 0x38, 0x73, 0x2e, 0xed,
+    0xaa, 0xb7, 0x4d, 0xa1, 0x41, 0x0f, 0xc0, 0x55, 0xea, 0x06, 0x8c, 0x99,
+    0xe9, 0x26, 0x0a, 0xcb, 0xe3, 0x37, 0xcf, 0x5d, 0x3e, 0x00, 0xe5, 0xb3,
+    0x23, 0x0f, 0xfe, 0xdb, 0x0b, 0x99, 0x07, 0x87, 0xd0, 0xc7, 0x0e, 0x0b,
+    0xfe, 0x41, 0x98, 0xea, 0x67, 0x58, 0xdd, 0x5a, 0x61, 0xfb, 0x5f, 0xec,
+    0x2d, 0xf9, 0x81, 0xf3, 0x1b, 0xef, 0xe1, 0x53, 0xf8, 0x1d, 0x17, 0x16,
+    0x17, 0x84, 0xdb };
+static const unsigned char expected2[128] = { 0xc5, 0xd3, 0x0a, 0x7c, 0xe1,
+    0xec, 0x11, 0x93, 0x78, 0xc8, 0x4f, 0x48, 0x7d, 0x77, 0x5a, 0x85, 0x42,
+    0xf1, 0x3e, 0xce, 0x23, 0x8a, 0x94, 0x55, 0xe8, 0x22, 0x9e, 0x88, 0x8d,
+    0xe8, 0x5b, 0xbd, 0x29, 0xeb, 0x63, 0xd0, 0xa1, 0x7a, 0x5b, 0x99, 0x9b,
+    0x52, 0xda, 0x22, 0xbe, 0x40, 0x23, 0xeb, 0x07, 0x62, 0x0a, 0x54, 0xf6,
+    0xfa, 0x6a, 0xd8, 0x73, 0x7b, 0x71, 0xeb, 0x04, 0x64, 0xda, 0xc0, 0x10,
+    0xf6, 0x56, 0xe6, 0xd1, 0xfd, 0x55, 0x05, 0x3e, 0x50, 0xc4, 0x87, 0x5c,
+    0x99, 0x30, 0xa3, 0x3f, 0x6d, 0x02, 0x63, 0xbd, 0x14, 0xdf, 0xd6, 0xab,
+    0x8c, 0x70, 0x52, 0x1c, 0x19, 0x33, 0x8b, 0x23, 0x08, 0xb9, 0x5c, 0xf8,
+    0xd0, 0xbb, 0x7d, 0x20, 0x2d, 0x21, 0x02, 0x78, 0x0e, 0xa3, 0x52, 0x8f,
+    0x1c, 0xb4, 0x85, 0x60, 0xf7, 0x6b, 0x20, 0xf3, 0x82, 0xb9, 0x42, 0x50,
+    0x0f, 0xce, 0xac };
+static const unsigned char expected3[128] = { 0xef, 0x3f, 0xdf, 0xd6, 0xc6,
+    0x15, 0x78, 0xfb, 0xf5, 0xcf, 0x35, 0xbd, 0x3d, 0xd3, 0x3b, 0x80, 0x09,
+    0x63, 0x16, 0x34, 0xd2, 0x1e, 0x42, 0xac, 0x33, 0x96, 0x0b, 0xd1, 0x38,
+    0xe5, 0x0d, 0x32, 0x11, 0x1e, 0x4c, 0xaf, 0x23, 0x7e, 0xe5, 0x3c, 0xa8,
+    0xad, 0x64, 0x26, 0x19, 0x4a, 0x88, 0x54, 0x5d, 0xdc, 0x49, 0x7a, 0x0b,
+    0x46, 0x6e, 0x7d, 0x6b, 0xbd, 0xb0, 0x04, 0x1b, 0x2f, 0x58, 0x6b, 0x53,
+    0x05, 0xe5, 0xe4, 0x4a, 0xff, 0x19, 0xb2, 0x35, 0x93, 0x61, 0x44, 0x67,
+    0x5e, 0xfb, 0xe4, 0x40, 0x9e, 0xb7, 0xe8, 0xe5, 0xf1, 0x43, 0x0f, 0x5f,
+    0x58, 0x36, 0xae, 0xb4, 0x9b, 0xb5, 0x32, 0x8b, 0x01, 0x7c, 0x4b, 0x9d,
+    0xc1, 0x1f, 0x8a, 0x03, 0x86, 0x3f, 0xa8, 0x03, 0xdc, 0x71, 0xd5, 0x72,
+    0x6b, 0x2b, 0x6b, 0x31, 0xaa, 0x32, 0x70, 0x8a, 0xfe, 0x5a, 0xf1, 0xd6,
+    0xb6, 0x90, 0x58 };
+static const unsigned char expected4[128] = { 0xd9, 0xbf, 0x3f, 0x6b, 0xce,
+    0x6e, 0xd0, 0xb5, 0x42, 0x54, 0x55, 0x77, 0x67, 0xfb, 0x57, 0x44, 0x3d,
+    0xd4, 0x77, 0x89, 0x11, 0xb6, 0x06, 0x05, 0x5c, 0x39, 0xcc, 0x25, 0xe6,
+    0x74, 0xb8, 0x36, 0x3f, 0xea, 0xbc, 0x57, 0xfd, 0xe5, 0x4f, 0x79, 0x0c,
+    0x52, 0xc8, 0xae, 0x43, 0x24, 0x0b, 0x79, 0xd4, 0x90, 0x42, 0xb7, 0x77,
+    0xbf, 0xd6, 0xcb, 0x80, 0xe9, 0x31, 0x27, 0x0b, 0x7f, 0x50, 0xeb, 0x5b,
+    0xac, 0x2a, 0xcd, 0x86, 0xa8, 0x36, 0xc5, 0xdc, 0x98, 0xc1, 0x16, 0xc1,
+    0x21, 0x7e, 0xc3, 0x1d, 0x3a, 0x63, 0xa9, 0x45, 0x13, 0x19, 0xf0, 0x97,
+    0xf3, 0xb4, 0xd6, 0xda, 0xb0, 0x77, 0x87, 0x19, 0x47, 0x7d, 0x24, 0xd2,
+    0x4b, 0x40, 0x3a, 0x12, 0x24, 0x1d, 0x7c, 0xca, 0x06, 0x4f, 0x79, 0x0f,
+    0x1d, 0x51, 0xcc, 0xaf, 0xf6, 0xb1, 0x66, 0x7d, 0x4b, 0xbc, 0xa1, 0x95,
+    0x8c, 0x43, 0x06 };
+static const unsigned char expected5[128] = { 0xaf, 0xf7, 0x41, 0x82, 0x93,
+    0xf3, 0xa5, 0x53, 0x89, 0x4b, 0x1e, 0x74, 0x84, 0xbd, 0x1e, 0x8e, 0xde,
+    0x19, 0x6e, 0xce, 0xd5, 0xa1, 0xd6, 0x81, 0x4d, 0xe3, 0x70, 0x91, 0xe0,
+    0x7e, 0x07, 0x6e, 0x34, 0xbb, 0xba, 0x81, 0x07, 0xa6, 0x86, 0xc9, 0x82,
+    0x85, 0x0f, 0x0a, 0x73, 0x53, 0x94, 0x0d, 0x40, 0xdb, 0x1a, 0xb0, 0xb5,
+    0x76, 0x5b, 0x78, 0xb4, 0xcf, 0x47, 0x3d, 0x94, 0x85, 0xa3, 0xdd, 0x6d,
+    0x59, 0xfd, 0x12, 0x45, 0xda, 0x46, 0xc5, 0x9c, 0xe5, 0x44, 0x40, 0x87,
+    0xc0, 0xfb, 0xf9, 0x7c, 0x0a, 0x2f, 0x7f, 0x95, 0x18, 0x85, 0x0d, 0x5e,
+    0x6c, 0x19, 0xef, 0xdf, 0x5e, 0x2e, 0x0b, 0x98, 0x4d, 0xd9, 0x88, 0x7b,
+    0x5c, 0x55, 0xe4, 0xfe, 0x3e, 0x37, 0xf6, 0x06, 0xa4, 0x84, 0xb8, 0xec,
+    0xa3, 0xd4, 0x8e, 0xa6, 0x33, 0xf5, 0x5e, 0xe7, 0xa7, 0xb4, 0x9d, 0x11,
+    0x8d, 0x92, 0x49 };
+
+int
+util_chacha20_selftest(void)
+{
+    util_chacha20_t ctx[1];
+    unsigned char key[32] = { 0 };
+    unsigned char nonce[8] = { 0 };
+    unsigned char keystream[512] = { 0 };
+    size_t i;
+
+    /* Empty key/nonce */
+    memset(keystream, 0, sizeof(keystream));
+    key[0] = 0;
+    nonce[0] = 0;
+    util_chacha20_init(ctx, key, sizeof(key), nonce, sizeof(nonce));
+    util_chacha20_encrypt(ctx, keystream, keystream, 512);
+    if (memcmp(keystream, expected1, 512) != 0)
+        return 0;
+
+    /* Empty key/nonce, but this time encrypt a few bytes at a time
+     * to test that we can deal with partial data that's not aligned
+     * with blocks. */
+    memset(keystream, 0, sizeof(keystream));
+    key[0] = 0;
+    nonce[0] = 0;
+    util_chacha20_init(ctx, key, sizeof(key), nonce, sizeof(nonce));
+    for (i = 0; i < 500; i += 7)
+        util_chacha20_encrypt(ctx, keystream + i, keystream + i, 7);
+    if (memcmp(keystream, expected1, 500) != 0)
+        return 0;
+
+    /* First byte of key equals 0x01 */
+    memset(keystream, 0, sizeof(keystream));
+    key[0] = 1;
+    nonce[0] = 0;
+    util_chacha20_init(ctx, key, sizeof(key), nonce, sizeof(nonce));
+    util_chacha20_encrypt(ctx, keystream, keystream, 128);
+    if (memcmp(keystream, expected2, 128) != 0)
+        return 0;
+
+    /* First byte of nonce equals 0x01 */
+    memset(keystream, 0, sizeof(keystream));
+    key[0] = 0;
+    nonce[0] = 1;
+    util_chacha20_init(ctx, key, sizeof(key), nonce, sizeof(nonce));
+    util_chacha20_encrypt(ctx, keystream, keystream, 128);
+    if (memcmp(keystream, expected3, 128) != 0) {
+        return 0;
+    }
+
+    /* all 0xFF */
+    memset(keystream, 0, sizeof(keystream));
+    memset(key, 0xFF, sizeof(key));
+    memset(nonce, 0xFF, sizeof(nonce));
+    util_chacha20_init(ctx, key, sizeof(key), nonce, sizeof(nonce));
+    util_chacha20_encrypt(ctx, keystream, keystream, 128);
+    if (memcmp(keystream, expected4, 128) != 0) {
+        return 0;
+    }
+
+    /* 5555/aa */
+    memset(keystream, 0, sizeof(keystream));
+    memset(key, 0x55, sizeof(key));
+    memset(nonce, 0xaa, sizeof(nonce));
+    util_chacha20_init(ctx, key, sizeof(key), nonce, sizeof(nonce));
+    util_chacha20_encrypt(ctx, keystream, keystream, 128);
+    if (memcmp(keystream, expected5, 128) != 0) {
+        return 0;
+    }
+
+    memcpy(keystream, "testing", 8);
+    memset(key, 0x55, sizeof(key));
+    memset(nonce, 0xaa, sizeof(nonce));
+    util_chacha20_init(ctx, key, sizeof(key), nonce, sizeof(nonce));
+    util_chacha20_encrypt(ctx, keystream + 0, keystream + 0, 1);
+    util_chacha20_encrypt(ctx, keystream + 1, keystream + 1, 1);
+    util_chacha20_encrypt(ctx, keystream + 2, keystream + 2, 1);
+    if (memcmp(keystream, "\xdb\x92\x32\xf6\xfa\x9d\xc2\x53", 3) != 0) {
+        return 0;
+    }
+
+    /*
+    for (i=0; i<128; i++) {
+        fprintf(stderr, "0x%02x, ", keystream[i]);
+        if (i % 16 == 15)
+            fprintf(stderr, "\n");
+    }*/
+    return 1;
+}
+
+int
+main(void)
+{
+    int is_success;
+
+    is_success = util_chacha20_selftest();
+    if (is_success) {
+        fprintf(stderr, "[+] success: chacha20\n");
+    } else {
+        fprintf(stderr, "[-] FAIL: chacha20\n");
+    }
+}
+#endif
