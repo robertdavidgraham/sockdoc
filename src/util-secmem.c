@@ -1,11 +1,11 @@
 /*
- "Security protected memory allocation for holding passwords/keys"
+    "Security protected memory allocation for holding passwords/keys"
 
- Copyright: 2019 by Robert David Graham
- Authors: Robert David Graham
- License: MIT
-   https://github.com/robertdavidgraham/sockdoc/blob/master/src/LICENSE
- Dependencies: operating system calls
+    Copyright: 2019 by Robert David Graham
+    Authors: Robert David Graham
+    License: MIT
+      https://github.com/robertdavidgraham/sockdoc/blob/master/src/LICENSE
+    Dependencies: operating system calls
 */
 #include "util-secmem.h"
 #include <errno.h>
@@ -129,11 +129,12 @@ util_secmem_alloc(size_t size)
 
     return p;
 
-on_error:
+on_error: {
     int tmp = errno;
     munmap(p, full_size);
     errno = tmp;
     return NULL;
+}
 }
 
 /****************************************************************************
@@ -148,10 +149,10 @@ util_secmem_free(void *in_p)
     /* Grab the size of the memory block */
     full_size = *(size_t *)(p - sizeof(size_t));
     page_size = *(size_t *)(p - 2 * sizeof(size_t));
-
+    
     /* Wipe the memory, technically unnecessary since we are
      * getting rid of it, but we do it for extra security. */
-    util_secmem_wipe(p, full_size - 2 * page_size);
+    util_secmem_wipe(p - 64, full_size - 2 * page_size);
 
     /* Get back the original pointer */
     p -= 64;
@@ -187,3 +188,40 @@ util_secmem_wipe(volatile void *p, size_t size)
     /* Now clear the memory */
     my_memset((void *)p, 0, size);
 }
+
+/****************************************************************************
+ * A simple test that basically just allocates and frees the memory
+ ****************************************************************************/
+int
+util_secmem_selftest(void)
+{
+    size_t i;
+    char *p;
+    
+    p = util_secmem_alloc(5000);
+    memset(p, 'B', 5000);
+    for (i=0; i<5000; i += 5) {
+        if (util_secmem_memcmp("BBBBB", p+i, 5) != 0)
+            return 0; /* failure */
+    }
+    util_secmem_wipe(p, 5000);
+    util_secmem_free(p);
+    return 1; /* success */
+}
+
+/****************************************************************************
+ ****************************************************************************/
+#ifdef SECMEMSTANDALONE
+int main(void)
+{
+    int is_success = util_secmem_selftest();
+    if (is_success) {
+        fprintf(stderr, "[+] secmem: success\n");
+        return 0;
+    } else {
+        fprintf(stderr, "[-] secmem: FAILURE\n");
+        return 1;
+    }
+}
+#endif
+

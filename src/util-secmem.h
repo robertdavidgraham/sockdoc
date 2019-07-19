@@ -1,11 +1,11 @@
 /*
- "Security protected memory allocation for holding passwords/keys"
+    "Security protected memory allocation for holding passwords/keys"
 
- Copyright: 2019 by Robert David Graham
- Authors: Robert David Graham
- License: MIT
-   https://github.com/robertdavidgraham/sockdoc/blob/master/src/LICENSE
- Dependencies: operating system calls
+    Copyright: 2019 by Robert David Graham
+    Authors: Robert David Graham
+    License: MIT
+      https://github.com/robertdavidgraham/sockdoc/blob/master/src/LICENSE
+    Dependencies: operating system calls
 
  This module implements "secure memory" for storing security-critical
  information such as passwords and crypto keys. This shouldn't be
@@ -76,4 +76,13 @@ int util_secmem_memcmp(void *lhs, void *rhs, size_t length);
  */
 void util_secmem_wipe(volatile void *p, size_t length);
 
+/**
+ * A quick sanity check of this module. This is not a comprehensive unit
+ * test, but verifies basic functionality with a small/quick test that
+ * won't bloat the size of executables, and can be called at startup
+ * by users of this program without delaying the program.
+ * @return 
+ *    1 on success, 0 on failure
+ */
+int util_secmem_selftest(void);
 #endif

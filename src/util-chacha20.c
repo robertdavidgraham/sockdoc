@@ -469,9 +469,9 @@ main(void)
 
     is_success = util_chacha20_selftest();
     if (is_success) {
-        fprintf(stderr, "[+] success: chacha20\n");
+        fprintf(stderr, "[+] chacha20: success\n");
     } else {
-        fprintf(stderr, "[-] FAIL: chacha20\n");
+        fprintf(stderr, "[-] chacha20: FAILURE\n");
     }
 }
 #endif
