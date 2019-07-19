@@ -1,8 +1,25 @@
-/* Copyright (c) 2019 - by Robert David Graham
- * MIT License: https://github.com/robertdavidgraham/sockdoc/LICENSE */
 /*
-   Allocates from the operating system secured memory for storying
-   passwords and crypto keys
+ "Security protected memory allocation for holding passwords/keys"
+
+ Copyright: 2019 by Robert David Graham
+ Authors: Robert David Graham
+ License: MIT
+   https://github.com/robertdavidgraham/sockdoc/blob/master/src/LICENSE
+ Dependencies: operating system calls
+
+ This module implements "secure memory" for storing security-critical
+ information such as passwords and crypto keys. This shouldn't be
+ used for normal memory allocation as it's slow, inefficient, and 
+ will quickly exhaust operating system resources if too much is allocated.
+
+ The protections it provides is by allocating pages directly form the
+ operating system and marking them as something that should not appear
+ in swap or core files, or be shared with child processes. They are
+ surrounded with guard pages so that buffer/memory overruns won't
+ accident change or read them.
+
+ There are also also the alternative compare and clear/memset functions
+ to handle common problems with memcmp() and memset().
 */
 #ifndef UTIL_SECMEM_H
 #define UTIL_SECMEM_H
@@ -37,6 +54,15 @@ void *util_secmem_alloc(size_t size);
 void util_secmem_free(void *p);
 
 /**
+ * Compare two chuncks of memory in constant time. The normal `memcmp()`
+ * function stops as soon as it detects a difference, which allows for
+ * a timing attack where the adversay can measure the difference.
+ * This function is much slower than `memcmp()`, so should only
+ * be used in cryptographic cases.
+ */
+int util_secmem_memcmp(void *lhs, void *rhs, size_t length);
+
+/**
  * Calls memset(0) on the memory, but avoids compiler optimizations that
  * might remove such calls. Smart compilers notice that we don't use the
  * contents of memory after a memset(), and thus may remove it. But for
@@ -48,6 +74,6 @@ void util_secmem_free(void *p);
  * @param size
  *  The number of bytes to wipe.
  */
-void util_wipe(volatile void *p, size_t size);
+void util_secmem_wipe(volatile void *p, size_t length);
 
 #endif
