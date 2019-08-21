@@ -16,7 +16,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-static const char *my_http_request = "GET / HTTP/1.0\r\n"
+static const char *my_http_request = "HEAD / HTTP/1.0\r\n"
                                      "User-Agent: tcp_client/0.0\r\n"
                                      "\r\n";
 
@@ -55,8 +55,8 @@ main(int argc, char *argv[])
             goto cleanup;
     }
 
-    /* Of the several results, keep trying to connect until
-     * we get one that works */
+    /* Of the several DNS results, keep trying to connect until  we get one that
+     * works */
     for (ai = addresses; ai; ai = ai->ai_next) {
         char addrname[64];
         char portname[8];
@@ -97,8 +97,8 @@ main(int argc, char *argv[])
         goto cleanup;
     }
 
-    /* The 'fd' socket now has a valid connection to the server, so
-     * send the HTTP request */
+    /* The 'fd' socket now has a valid connection to the server, so send the
+     * HTTP request */
     count = send(fd, my_http_request, strlen(my_http_request), 0);
     if (count == -1) {
         fprintf(stderr, "[-] send(): %s\n", strerror(errno));
@@ -108,9 +108,9 @@ main(int argc, char *argv[])
 
     /* Now dump all the bytes in response */
     for (;;) {
-        char c;
-
-        count = recv(fd, &c, 1, 0);
+        unsigned char buf[512];
+        ssize_t i;
+        count = recv(fd, &buf, 512, 0);
         if (count == 0)
             break; /* opposite side closed connection */
         else if (count < 0) {
@@ -118,13 +118,17 @@ main(int argc, char *argv[])
             break;
         }
 
-        if (isprint(c) || isspace(c))
-            printf("%c", c);
-        else
-            printf(".");
+        for (i = 0; i < count; i++) {
+            unsigned char c = buf[i];
+            if (isprint(c) || isspace(c))
+                printf("%c", c);
+            else
+                printf(".");
+        }
     }
 
 cleanup:
-    if (addresses)
-        freeaddrinfo(addresses);
+    freeaddrinfo(addresses);
+    if (fd != -1)
+        close(fd);
 }
