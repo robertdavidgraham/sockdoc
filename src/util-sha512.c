@@ -178,6 +178,12 @@ util_sha512_init(util_sha512_t *ctx)
     ctx->state[7] = 0x5be0cd19137e2179ULL; /* frac(sqrt(19)) */
 }
 
+/*
+ * This is called iteratively. If the input data isn't aligned on an
+ * even block, we must buffer the partial data until either more data
+ * is added that will complete the block, or until the 'final()'
+ * function is called that will pad the final block.
+ */
 void
 util_sha512_update(util_sha512_t *ctx, const void *vbuf, size_t length)
 {
