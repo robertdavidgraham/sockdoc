@@ -28,6 +28,8 @@ main(int argc, char *argv[])
     int err;
     int fd = -1;
     ptrdiff_t count;
+    const char *hostname;
+    const char *portname;
 
     /* Ignore the send() problem */
     signal(SIGPIPE, SIG_IGN);
@@ -36,12 +38,11 @@ main(int argc, char *argv[])
         fprintf(stderr, "[-] usage: tcp-client <host> <port>\n");
         return -1;
     }
+    hostname = argv[1];
+    portname = argv[2];
 
     /* Do a DNS lookup on the name */
-    err = getaddrinfo(argv[1], /* host name */
-        argv[2], /* port number */
-        0, /* hints (defaults) */
-        &addresses); /* results */
+    err = getaddrinfo(hostname, portname, 0, &addresses);
     if (err) {
         fprintf(stderr, "[-] getaddrinfo(): %s\n", gai_strerror(err));
         return -1;
@@ -49,10 +50,12 @@ main(int argc, char *argv[])
         count = 0;
         for (ai = addresses; ai; ai = ai->ai_next)
             count++;
-        fprintf(stderr, "[%s] getaddrinfo(): returned %d addresses\n",
-            count ? "+" : "-", (int)count);
-        if (count == 0)
+        if (count == 0) {
+            fprintf(stderr, "[-] getaddrinfo(): returned zero addresses\n");
             goto cleanup;
+        } else {
+            fprintf(stderr, "[+] getaddrinfo(): returned %d addresses\n", (int)count);
+        }
     }
 
     /* Of the several DNS results, keep trying to connect until  we get one that
@@ -89,7 +92,8 @@ main(int argc, char *argv[])
         } else {
             fprintf(stderr, "[+] connect([%s]:%s): %s\n", addrname, portname,
                 "succeeded");
-            break; /* got one that works, so break out of loop */
+            /* got one that works, so break out of loop */
+            break;
         }
     }
     if (fd == -1) {

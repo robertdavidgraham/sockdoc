@@ -118,7 +118,7 @@ STRDUP(const char *str)
 /***************************************************************************
  ***************************************************************************/
 void *
-MALLOCDUP(void *p, size_t size)
+MALLOCDUP(const void *p, size_t size)
 {
     void *result = MALLOC(size);
     memcpy(result, p, size);

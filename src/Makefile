@@ -1,25 +1,46 @@
 CC = gcc
-CFLAGS = -Wall -Wpedantic -Wextra -fsanitize=undefined \
+CFLAGS = -g -ggdb -Wall -Wpedantic -Wextra \
 	-D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE \
 	-Wformat -Wformat-security 
 
-TARGETS = sha512 chacha20
+TARGETS = bin/dns-unittest bin/sha512-unittest bin/chacha20-unittest bin/secmem-unittest \
+	bin/resolv
 
-sha512: util-sha512.c util-sha512.h
-	$(CC) -DSHA512STANDALONE $(CFLAGS) $< -o $@
+all: $(TARGETS)
 
-chacha20: util-chacha20.c util-chacha20.h
-	$(CC) -DCHACHA20STANDALONE $(CFLAGS) $< -o $@
+bin/sha512-unittest: util-sha512.c util-sha512.h
+	@echo   $@
+	@$(CC) -DSHA512STANDALONE $(CFLAGS) $< -o $@
 
-secmem: util-secmem.c util-secmem.h
-	$(CC) -DSECMEMSTANDALONE $(CFLAGS) $< -o $@
+bin/chacha20-unittest: util-chacha20.c util-chacha20.h
+	@echo $@
+	@$(CC) -DCHACHA20STANDALONE $(CFLAGS) $< -o $@
 
-test: sha512 chacha20 secmem
-	@./sha512 --test
-	@./chacha20 --test
-	@./secmem --test
+bin/secmem-unittest: util-secmem.c util-secmem.h
+	@echo $@
+	@$(CC) -DSECMEMSTANDALONE $(CFLAGS) $< -o $@
+
+bin/dns-unittest: dns-unittest.c dns-parse.c dns-format.c dns-parse.h dns-format.h
+	@echo $@
+	$(CC) $(CLFAGS) -ftest-coverage --coverage dns-unittest.c dns-parse.c dns-format.c  -o $@
+
+bin/resolv: dns-resolv.c dns-parse.c dns-format.c dns-parse.h dns-format.h
+	@echo $@
+	@$(CC) $(CLFAGS) -lresolv dns-resolv.c dns-parse.c dns-format.c -lresolv -o $@
+
+test: bin/sha512-unittest bin/chacha20-unittest bin/secmem-unittest bin/dns-unittest
+	@cd bin; ./sha512-unittest --test
+	@cd bin; ./chacha20-unittest --test
+	@cd bin; ./secmem-unittest --test
+	@cd bin; ./dns-unittest
+	
+
+coverage: bin/dns-unittest
+	@./bin/dns-unittest
+	@gcov dns-parse.c
 
 clean: 
-	@rm -f $(TARGETS)
+	@rm -f $(TARGETS) *.gcda
 
-all: sha512
+
+

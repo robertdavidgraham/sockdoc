@@ -85,4 +85,5 @@ void util_secmem_wipe(volatile void *p, size_t length);
  *    1 on success, 0 on failure
  */
 int util_secmem_selftest(void);
+
 #endif
