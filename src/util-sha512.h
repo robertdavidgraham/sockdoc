@@ -23,11 +23,11 @@
 #include <stdio.h>
 
 /**
- * This function holds the 'state' or 'context'. To hash data, this context
+ * This structure holds the 'state' or 'context'. To hash data, this context
  * is first initialized, then multiple updates are done with sequential
  * chunks of data, then at end the 'finalize()' function is called.
  */
-typedef struct {
+typedef struct util_sha512_t {
     uint8_t buf[128];
     uint64_t state[8];
     uint64_t length;

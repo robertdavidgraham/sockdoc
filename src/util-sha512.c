@@ -19,6 +19,7 @@
 typedef void *(*memset_t)(void *, int, size_t);
 static volatile memset_t secure_memset = memset;
 
+/* The standard MIN()/MAX() macro */
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif
@@ -30,7 +31,7 @@ static volatile memset_t secure_memset = memset;
     (((number) >> (count)) | ((number) << (64 - (count))))
 
 /**
- * Read a buffer of 8 bytes in bit-endian format to form
+ * Read a buffer of 8 bytes into the  bit-endian format to form
  * a 64-bit integer.
  */
 static uint64_t
@@ -118,7 +119,7 @@ static const uint64_t K[80] = { 0x428a2f98d728ae22ULL, 0x7137449123ef65cdULL,
  * as it can't be uncompressed.
  */
 static void
-sha512_cryptomagic(util_sha512_t *ctx, uint8_t const *buf)
+sha512_cryptomagic(util_sha512_t *ctx, const unsigned char *buf)
 {
     uint64_t S[8];
     uint64_t W[80];

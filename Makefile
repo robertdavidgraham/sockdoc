@@ -1,7 +1,7 @@
 
 CC = gcc
 WARNINGS = -Wall -Wformat -Wformat-security -Werror=format-security
-SECFLAGS = -fstack-protector -fPIE -pie -D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now
+SECFLAGS = -fstack-protector -fPIE  -D_FORTIFY_SOURCE=2
 CFLAGS = -Wall -g -O2 $(WARNINGS) $(SECFLAGS)
 
 TCPSRV = bin/tcp-srv-one bin/tcp-srv-fork bin/tcp-srv-poll bin/tcp-srv-sigpipe

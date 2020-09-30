@@ -1,13 +1,24 @@
 sockdoc
 ===
 
-This project has programming examples to accompany a textbook I'm working on for 
-advanced network programming topics. This text will focus on scalability, reliability,
-security, and portability. The goal is rather than teaching programmers who to create
-prototypes that might work, but which fail in the real world, how to finish programs
-so that they work correctly when exposed to the rigors of the public Internet.
+This project documents using the "Sockets" API in C for network programming.
+It's purpose is to accompany academic textbooks on network programming,
+giving useful examples.
 
-I'm working on this text now (August 2019) and have no clue when I'll be done, but 
-probably at least a year from now.
+In particular, the purpose is to document things missing from textbooks.
+A good example is "SIGPIPE": every program using TCP needs to handle
+this signal. This complication is largely ignored by textbook, and not included
+in their examples. This leads to students writing code that occasionally crashes
+mysteriously.
+
+
+
+
+
+
+
+
+
+
 
 
