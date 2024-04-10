@@ -16,7 +16,7 @@
 #include <fcntl.h> /* fcntl(), F_GETFL, O_NONBLOCK */
 
 
-struct my_connection
+struct connection_t
 {
     int fd;
     char addr[64];
@@ -27,7 +27,7 @@ struct my_connection
  * Set up a server listening on a random port
  */
 static int
-setup_random_server(struct my_connection *result)
+setup_random_server(struct connection_t *result)
 {
     struct addrinfo *ai = NULL;
     struct addrinfo hints = {0};
@@ -193,7 +193,7 @@ error_cleanup:
 
 
 int
-test_client_abort(const struct my_connection *srvr)
+test_client_abort(const struct connection_t *srvr)
 {
 
     return 1;
@@ -202,7 +202,7 @@ test_client_abort(const struct my_connection *srvr)
 int main(int argc, char *argv[])
 {
     int err;
-    struct my_connection srvr = {0};
+    struct connection_t srvr = {0};
 
     /* Ignore the send() problem */
     signal(SIGPIPE, SIG_IGN);
@@ -251,7 +251,7 @@ int main(int argc, char *argv[])
         return 0;
     }
     
-    struct my_connection peer;
+    struct connection_t peer;
     struct sockaddr_storage sa;
     socklen_t sa_addrlen = sizeof(sa);
     

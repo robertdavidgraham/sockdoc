@@ -26,7 +26,7 @@
 #include <netdb.h>
 #include <sys/resource.h>
 
-struct my_connection
+struct connection_t
 {
     size_t bytes_received;
     size_t bytes_sent;
@@ -42,7 +42,7 @@ struct my_connection
 
 struct my_dispatcher
 {
-    struct my_connection *connections;
+    struct connection_t *connections;
     struct pollfd *list;
     size_t count;
     size_t max;
@@ -224,7 +224,7 @@ void dispatcher_add_target(struct my_dispatcher *dispatcher, const char *name)
 
 void dispatcher_add(struct my_dispatcher *dispatcher, int fd, struct sockaddr_in6 *sa, socklen_t sa_addrlen)
 {
-    struct my_connection *c;
+    struct connection_t *c;
     int err;
     
     /* add to the poll() list, set for reading */
@@ -343,7 +343,7 @@ void dispatcher_getsockname(struct my_dispatcher *dispatcher, size_t i)
     int err;
     struct sockaddr_in6 sin6;
     socklen_t sizeof_sin6 = sizeof(sin6);
-    struct my_connection *c = &dispatcher->connections[i];
+    struct connection_t *c = &dispatcher->connections[i];
     err = getsockname(fd, (struct sockaddr*)&sin6, &sizeof_sin6);
     if (err) {
         fprintf(stderr, "[-] getsockname(): %s\n", strerror(errno));
@@ -483,7 +483,7 @@ int main(int argc, char *argv[])
 
         /* handle all the TCP connections */
         for (i=1; i<dispatcher->count; i++) {
-            struct my_connection *c = &dispatcher->connections[i];
+            struct connection_t *c = &dispatcher->connections[i];
             if (dispatcher->list[i].revents == 0) {
                 /* no events for this socket */
                 continue;

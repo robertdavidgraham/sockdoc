@@ -1,6 +1,2 @@
-BasedOnStyle: WebKit
-AlignEscapedNewlinesLeft: 'true'
 ColumnLimit: '80'
-PointerAlignment: Right
-AlwaysBreakAfterDefinitionReturnType: All
 
