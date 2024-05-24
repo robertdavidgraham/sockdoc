@@ -27,9 +27,8 @@ int main(int argc, char *argv[])
     int err;
     int fd = -1;
     int yes = 1;
-    char hostaddr[NI_MAXHOST];
-    char hostport[NI_MAXSERV];
-    struct sockaddr *sa = NULL;
+    char localaddr[NI_MAXHOST];
+    char localport[NI_MAXSERV];
     socklen_t sa_max;
         
     /* Ignore the send() problem */
@@ -53,8 +52,8 @@ int main(int argc, char *argv[])
 
     /* And retrieve back again which addresses were assigned */
     err = getnameinfo(ai->ai_addr, ai->ai_addrlen,
-                        hostaddr, sizeof(hostaddr),
-                        hostport, sizeof(hostport),
+                        localaddr, sizeof(localaddr),
+                        localport, sizeof(localport),
                         NI_NUMERICHOST | NI_NUMERICSERV);
     if (err) {
         fprintf(stderr, "[-] getnameinfo(): %s\n", gai_strerror(err));
@@ -68,94 +67,82 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
-    /* Allow multiple processes to share this IP address */
-    err = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-    if (err) {
-        fprintf(stderr, "[-] SO_REUSEADDR([%s]:%s): %s\n", hostaddr, hostport, strerror(errno));
-        goto cleanup;
-    }
-    
-#if defined(SO_REUSEPORT)
-    /* Allow multiple processes to share this port */
-    err = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &yes, sizeof(yes));
-    if (err) {
-        fprintf(stderr, "[-] SO_REUSEPORT([%s]:%s): %s\n", hostaddr, hostport, strerror(errno));
-        goto cleanup;
-    }
-#endif
-
     /* Tell it to use the local port number (and optionally, address) */
     err = bind(fd, ai->ai_addr, ai->ai_addrlen);
     if (err) {
-        fprintf(stderr, "[-] bind([%s]:%s): %s\n", hostaddr, hostport, strerror(errno));
+        fprintf(stderr, "[-] bind([%s]:%s): %s\n", 
+                localaddr, localport, strerror(errno));
         goto cleanup;
     }
 
-    /* Configure the socket for listening (i.e. accepting incoming connections) */
+    /* Configure the socket for listening (i.e. accepting incoming connections).
+     * The connection is now "half-open" at this point, with local address/port
+     * specified, but with no remote address/port */
     err = listen(fd, 10);
     if (err) {
-        fprintf(stderr, "[-] listen([%s]:%s): %s\n", hostaddr, hostport, strerror(errno));
+        fprintf(stderr, "[-] listen([%s]:%s): %s\n", 
+                localaddr, localport, strerror(errno));
         goto cleanup;
     } else
-        fprintf(stderr, "[+] listening on [%s]:%s\n", hostaddr, hostport);
+        fprintf(stderr, "[+] listening on [%s]:%s\n", localaddr, localport);
     
-
-    /* Allocate a structure to hold the incoming address */
-    sa_max = sizeof(struct sockaddr_in);
-    if (sa_max < sizeof(struct sockaddr_in6))
-        sa_max = sizeof(struct sockaddr_in6);
-    sa = malloc(sa_max);
 
     /* Loop accepting incoming connections */
     for (;;) {
         int fd2;
-        socklen_t sa_addrlen = sa_max;
-        char peeraddr[NI_MAXHOST];
-        char peerport[NI_MAXSERV];
+        struct sockaddr_storage remoteaddr;
+        socklen_t remoteaddr_length = sizeof(remoteaddr);
+        char hoststring[NI_MAXHOST];
+        char portstring[NI_MAXSERV];
     
         /* Wait until somebody connects to us */
-        fd2 = accept(fd, sa, &sa_addrlen);
+        fd2 = accept(fd, &remoteaddr, &remoteaddr_length);
         if (fd2 == -1) {
-            fprintf(stderr, "[-] accept([%s]:%s): %s\n", hostaddr, hostport, strerror(errno));
+            fprintf(stderr, "[-] accept([%s]:%s): %s\n", 
+                    localaddr, localport, strerror(errno));
             continue;
         }
 
         /* Pretty print the incoming address/port */
-        err = getnameinfo(sa, sa_addrlen,
-                        peeraddr, sizeof(peeraddr),
-                        peerport, sizeof(peerport),
+        err = getnameinfo(&remoteaddr, &remoteaddr_length,
+                        hoststring, sizeof(hoststring),
+                        portstring, sizeof(portstring),
                         NI_NUMERICHOST | NI_NUMERICSERV);
         if (err) {
             fprintf(stderr, "[-] getnameinfo(): %s\n", gai_strerror(err));
             goto cleanup;
         }
-        fprintf(stderr, "[+] accept([%s]:%s) from [%s]:%s\n", hostaddr, hostport, peeraddr, peerport);
+        fprintf(stderr, "[+] accept([%s]:%s) from [%s]:%s\n", 
+                localaddr, localport, hoststring, portstring);
 
         /* Loop on this connection receiving/transmitting data */
         for (;;) {
-            char buf[512];
+            char buf[1024];
             ptrdiff_t bytes_received;
             ptrdiff_t bytes_sent;
 
             /* Wait until some bytes received or connection closed */
             bytes_received = recv(fd2, buf, sizeof(buf), 0);
             if (bytes_received == 0) {
-                fprintf(stderr, "[+] close() from [%s]:%s\n", peeraddr, peerport);
+                fprintf(stderr, "[+] close() from [%s]:%s\n", 
+                        hoststring, portstring);
                 break;
             } else if (bytes_received == -1) {
-                fprintf(stderr, "[-] error from [%s]:%s\n", peeraddr, peerport);
+                fprintf(stderr, "[-] error from [%s]:%s\n", 
+                        hoststring, portstring);
                 break;
             } else
-                fprintf(stderr, "[+] recv([%s]:%s) %d bytes\n", peeraddr, peerport, (int)bytes_received);
+                fprintf(stderr, "[+] recv([%s]:%s) %d bytes\n", 
+                        hoststring, portstring, (int)bytes_received);
                 
 
             /* Echo back to sender */
             bytes_sent = send(fd2, buf, bytes_received, 0);
             if (bytes_sent == -1) {
-                fprintf(stderr, "[-] send([%s]:%s): %s\n", peeraddr, peerport, strerror(errno));
+                fprintf(stderr, "[-] send([%s]:%s): %s\n", hoststring, portstring, strerror(errno));
                 break;
             } else
-                fprintf(stderr, "[+] send([%s]:%s) %d bytes\n", peeraddr, peerport, (int)bytes_sent);
+                fprintf(stderr, "[+] send([%s]:%s) %d bytes\n", hoststring, portstring, (int)bytes_sent);
         }
      
         close(fd2);
