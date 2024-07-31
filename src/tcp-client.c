@@ -15,6 +15,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <sys/types.h>
 
 static const char *my_http_request = "HEAD / HTTP/1.0\r\n"
                                      "User-Agent: tcp_client/0.0\r\n"
@@ -84,6 +85,20 @@ main(int argc, char *argv[])
     if (fd == -1) {
         fprintf(stderr, "[-] socket(): %s\n", strerror(errno));
         goto cleanup;
+    }
+   
+    struct timeval tv;
+    tv.tv_sec = 5; /* five seconds */
+    tv.tv_usec = 0;
+    err = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    if (err) {
+        fprintf(stderr, "[-] setsockopt(): %s\n", strerror(errno));
+        goto cleanup;;
+    }
+    err = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    if (err) {
+        fprintf(stderr, "[-] setsockopt(): %s\n", strerror(errno));
+        goto cleanup;;
     }
 
     /* Try to connect */

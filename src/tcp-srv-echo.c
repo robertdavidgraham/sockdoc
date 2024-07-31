@@ -30,6 +30,8 @@ int main(int argc, char *argv[])
     char localaddr[NI_MAXHOST];
     char localport[NI_MAXSERV];
     socklen_t sa_max;
+    const char *portname = argv[1];
+    const char *hostname = (argc>=3)?argv[2]:0;
         
     /* Ignore the send() problem */
     signal(SIGPIPE, SIG_IGN);
@@ -41,10 +43,7 @@ int main(int argc, char *argv[])
     
     /* Get an address structure for the port */
     hints.ai_flags = AI_PASSIVE;
-    err = getaddrinfo((argc==3)?argv[2]:0,  /* local address*/
-                      argv[1],              /* local port number */
-                      &hints,               /* hints */
-                      &ai);                 /* result */
+    err = getaddrinfo(hostname, portname, &hints, &ai);
     if (err) {
         fprintf(stderr, "[-] getaddrinfo(): %s\n", gai_strerror(err));
         return -1;
@@ -96,7 +95,7 @@ int main(int argc, char *argv[])
         char portstring[NI_MAXSERV];
     
         /* Wait until somebody connects to us */
-        fd2 = accept(fd, &remoteaddr, &remoteaddr_length);
+        fd2 = accept(fd, (struct sockaddr*)&remoteaddr, &remoteaddr_length);
         if (fd2 == -1) {
             fprintf(stderr, "[-] accept([%s]:%s): %s\n", 
                     localaddr, localport, strerror(errno));
@@ -104,7 +103,7 @@ int main(int argc, char *argv[])
         }
 
         /* Pretty print the incoming address/port */
-        err = getnameinfo(&remoteaddr, &remoteaddr_length,
+        err = getnameinfo((struct sockaddr*)&remoteaddr, remoteaddr_length,
                         hoststring, sizeof(hoststring),
                         portstring, sizeof(portstring),
                         NI_NUMERICHOST | NI_NUMERICSERV);
@@ -152,8 +151,6 @@ int main(int argc, char *argv[])
 cleanup:
     if (fd > 0)
         close(fd);
-    if (sa)
-        free(sa);
     if (ai)
         freeaddrinfo(ai);
     return 0;
