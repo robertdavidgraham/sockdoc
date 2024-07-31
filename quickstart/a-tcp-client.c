@@ -1,28 +1,22 @@
-/* tcp-client
- Simple example of writing a client program using TCP.
- Example usage:
-    tcp-client www.google.com 80
- This will send an HTTP request, then dump the response it gets
- back from the server.
+/* a-tcp-client
+ * This is the very minimal implementation of something that sends
+ * a message via TCP and receives a response.
  */
 #include <ctype.h>
-#include <errno.h>
-#include <signal.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
-#include <netdb.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <sys/types.h>
+#include <netdb.h> /* getaddrinfo() */
+#include <sys/socket.h> /* socket(), connect(), send(), recv() */
+#include <unistd.h> /* close() */
 
-/* useful when used with port 80 */
+/* Mimics an HTTP request */
 static const char *my_http_request = 
     "HEAD / HTTP/1.0\r\n"
     "User-Agent: tcp_client/0.0\r\n"
     "\r\n";
 
+/* Prints to command-line the message we receive in response */
 void
 print_string(const unsigned char *buf, ssize_t count) {
     ssize_t i;
@@ -42,7 +36,7 @@ main(int argc, char *argv[])
 {
     struct addrinfo *target = NULL;
     int err;
-    int fd = -1;
+    int fd;
     ssize_t count;
     unsigned char buf[65536];
     const char *hostname = argv[1];
@@ -59,6 +53,5 @@ main(int argc, char *argv[])
     count = send(fd, my_http_request, strlen(my_http_request), 0);    
     count = recv(fd, &buf, sizeof(buf), 0);
     print_string(buf, count); 
-    
     close(fd);
 }
