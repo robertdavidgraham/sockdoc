@@ -1,14 +1,14 @@
-/* a-tcp-client
- * This is the very minimal implementation of something that sends
- * a message via TCP and receives a response.
- */
 #include <ctype.h>
 #include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
 
 #include <netdb.h> /* getaddrinfo() */
 #include <sys/socket.h> /* socket(), connect(), send(), recv() */
 #include <unistd.h> /* close() */
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
 
 /* Mimics an HTTP request */
 static const char *my_http_request = 
@@ -31,9 +31,7 @@ print_string(const unsigned char *buf, ssize_t count) {
         }
 }
 
-int
-main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     struct addrinfo *target = NULL;
     int err;
     int fd;
@@ -41,17 +39,31 @@ main(int argc, char *argv[])
     unsigned char buf[65536];
     const char *hostname = argv[1];
     const char *portname = argv[2];
+    SSL_CTX *ctx;
+    SSL *ssl;
 
     if (argc != 3) {
-        fprintf(stderr, "[-] usage:\n a-tcp-client <host> <port>\n");
-        return -1;
+        printf("usage: %s <hostname> <portnum>\n", argv[0]);
+        exit(1);
     }
 
+
+    SSL_library_init();
+    OpenSSL_add_all_algorithms(); 
+    ctx = SSL_CTX_new(TLS_client_method());
+    
     err = getaddrinfo(hostname, portname, 0, &target);
     fd = socket(target->ai_family, SOCK_STREAM, 0);
+    ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, fd);
     err = connect(fd, target->ai_addr, target->ai_addrlen);
-    count = send(fd, my_http_request, strlen(my_http_request), 0);    
-    count = recv(fd, &buf, sizeof(buf), 0);
-    print_string(buf, count); 
+    err = SSL_connect(ssl);
+    SSL_write(ssl, my_http_request, strlen(my_http_request));
+    count = SSL_read(ssl, &buf, sizeof(buf)); 
+    print_string(buf, count);     
+    SSL_free(ssl); 
     close(fd);
+    SSL_CTX_free(ctx);
+
+    return 0;
 }

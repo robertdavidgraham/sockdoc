@@ -1,7 +1,7 @@
-/* a-udp-client
+/* a-udp-client2
  Simple example of writing a client program using UDP.
  Example usage:
-    a-udp-client 1.1.1.1 53
+    a-udp-client2 1.1.1.1 53
  This will send a DNS request, then dump the response it gets
  back from the server.
  */
@@ -54,10 +54,9 @@ main(int argc, char *argv[])
 
     err = getaddrinfo(hostname, portname, 0, &target);
     fd = socket(target->ai_family, SOCK_DGRAM, 0);
-    err = connect(fd, target->ai_addr, target->ai_addrlen);
-    count = send(fd, my_dns_request, sizeof(my_dns_request)-1, 0);    
+    count = sendto(fd, my_dns_request, sizeof(my_dns_request)-1, 0,
+                    target->ai_addr, target->ai_addrlen);    
     count = recv(fd, &buf, sizeof(buf), 0);
-    print_string(buf, count);
-    sleep(3600); 
+    print_string(buf, count); 
     close(fd);
 }

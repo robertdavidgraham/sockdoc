@@ -141,7 +141,7 @@ main(int argc, char *argv[])
     for (;;) {
         unsigned char buf[1024];
         ssize_t i;
-        count = recv(fd, &buf, sizeof(buf), 0);
+        count = read(fd, &buf, sizeof(buf));
         if (count == 0) {
             fprintf(stderr, "[+] recv(): connected ended cleanly\n");
             break; /* opposite side closed connection */

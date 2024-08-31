@@ -24,6 +24,7 @@ static const char *my_http_response =
     "HTTP/1.0 200 OK\r\n"
     "Server: a-tcp-srv/1.0\r\n"
     "Content-type: text/html\r\n"
+    "Content-Length: 41\r\n"
     "\r\n"
     "<title>a-tcp-srv</title>\r\n"
     "Hello, world.\r\n";
@@ -50,9 +51,11 @@ int main(int argc, char *argv[])
     int fd = -1;
     const char *portname = argv[1];
     const char *hostname = (argc>=3)?argv[2]:0;
+    unsigned char buf[65536];
+    ssize_t count;
         
     if (argc < 2 || 3 < argc) {
-        fprintf(stderr, "[-] usage: tcp-srv-one <port> [address]\n");
+        fprintf(stderr, "[-] usage: a-tcp-srv <port> [address]\n");
         return -1;
     }
     
@@ -61,15 +64,12 @@ int main(int argc, char *argv[])
     fd = socket(local->ai_family, SOCK_STREAM, 0);
     err = bind(fd, local->ai_addr, local->ai_addrlen);
     err = listen(fd, 10);
+    sleep(3600);
     while (err == 0) {
-        unsigned char buf[65536];
-        ssize_t count;
         int fd2 = accept(fd, 0, 0);
         count = recv(fd2, buf, sizeof(buf), 0);
-        if (count >= 0) {
-            print_string(buf, count);    
-            count = send(fd2, my_http_response, strlen(my_http_response), 0);
-        }
+        print_string(buf, count);    
+        count = send(fd2, my_http_response, strlen(my_http_response), 0);
         close(fd2);
     }
     close(fd);
